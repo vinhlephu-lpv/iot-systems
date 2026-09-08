@@ -1,0 +1,784 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IOT Cold Storage Monitor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Overlay for mobile sidebar -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <svg class="brand-icon" viewBox="0 0 40 40" fill="none">
+                <rect x="2" y="2" width="36" height="36" rx="8" stroke="currentColor" stroke-width="2.5"/>
+                <path d="M20 8v24M14 14l6-6 6 6M14 26l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div class="brand-text">
+                <span class="brand-name">ColdVault</span>
+                <span class="brand-sub">IoT Monitor</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-tab="dashboard">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+                <span>Tổng quan</span>
+            </a>
+            <a href="#" class="nav-item" data-tab="history">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+                </svg>
+                <span>Lịch sử</span>
+            </a>
+            <a href="#" class="nav-item" data-tab="alerts">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+                <span>Cảnh báo</span>
+                <span class="nav-badge" id="alertBadge">0</span>
+            </a>
+            <a href="#" class="nav-item" data-tab="control">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                <span>Điều khiển</span>
+            </a>
+            <a href="#" class="nav-item" data-tab="about">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="16" x2="12" y2="12"/>
+                    <line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span>Giới thiệu</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="connection-status" id="connectionStatus">
+                <span class="status-dot offline"></span>
+                <span class="status-text">Chờ kết nối</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Mobile Header -->
+        <header class="mobile-header">
+            <button class="menu-toggle" id="menuToggle" aria-label="Menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <line x1="3" y1="6" x2="21" y2="6"/>
+                    <line x1="3" y1="12" x2="21" y2="12"/>
+                    <line x1="3" y1="18" x2="21" y2="18"/>
+                </svg>
+            </button>
+            <span class="mobile-title">ColdVault</span>
+            <div class="mobile-status">
+                <span class="status-dot offline" id="mobileStatusDot"></span>
+            </div>
+        </header>
+
+        <!-- ===================== DASHBOARD TAB ===================== -->
+        <section class="tab-content active" id="tab-dashboard">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Tổng quan hệ thống</h1>
+                    <p class="page-subtitle" id="currentDateTime">--</p>
+                </div>
+                <div class="header-alert-strip" id="headerAlertStrip">
+                    <svg class="strip-icon" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                    </svg>
+                    <span id="headerAlertText">Hệ thống bình thường</span>
+                </div>
+            </div>
+
+            <!-- Gauges Row -->
+            <div class="dashboard-grid">
+                <!-- Temperature Card -->
+                <div class="card gauge-card">
+                    <div class="card-header">
+                        <svg class="card-icon temp-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+                        </svg>
+                        <span class="card-label">Nhiệt độ</span>
+                    </div>
+                    <div class="gauge-container">
+                        <svg class="gauge-svg" viewBox="0 0 200 200">
+                            <defs>
+                                <linearGradient id="tempGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" style="stop-color:#3b82f6"/>
+                                    <stop offset="50%" style="stop-color:#06b6d4"/>
+                                    <stop offset="100%" style="stop-color:#ef4444"/>
+                                </linearGradient>
+                            </defs>
+                            <circle class="gauge-bg" cx="100" cy="100" r="85" />
+                            <circle class="gauge-fill" id="tempGauge" cx="100" cy="100" r="85"
+                                stroke="url(#tempGradient)" />
+                            <circle class="gauge-inner-shadow" cx="100" cy="100" r="70"/>
+                        </svg>
+                        <div class="gauge-value">
+                            <span class="gauge-number" id="tempValue">--</span>
+                            <span class="gauge-unit">&deg;C</span>
+                        </div>
+                    </div>
+                    <div class="gauge-range">
+                        <span>-10&deg;C</span>
+                        <span class="gauge-status" id="tempStatus">---</span>
+                        <span>40&deg;C</span>
+                    </div>
+                </div>
+
+                <!-- Humidity Card -->
+                <div class="card gauge-card">
+                    <div class="card-header">
+                        <svg class="card-icon humi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
+                        </svg>
+                        <span class="card-label">Độ ẩm</span>
+                    </div>
+                    <div class="gauge-container">
+                        <svg class="gauge-svg" viewBox="0 0 200 200">
+                            <defs>
+                                <linearGradient id="humiGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" style="stop-color:#f59e0b"/>
+                                    <stop offset="50%" style="stop-color:#10b981"/>
+                                    <stop offset="100%" style="stop-color:#3b82f6"/>
+                                </linearGradient>
+                            </defs>
+                            <circle class="gauge-bg" cx="100" cy="100" r="85"/>
+                            <circle class="gauge-fill" id="humiGauge" cx="100" cy="100" r="85"
+                                stroke="url(#humiGradient)"/>
+                            <circle class="gauge-inner-shadow" cx="100" cy="100" r="70"/>
+                        </svg>
+                        <div class="gauge-value">
+                            <span class="gauge-number" id="humiValue">--</span>
+                            <span class="gauge-unit">%</span>
+                        </div>
+                    </div>
+                    <div class="gauge-range">
+                        <span>0%</span>
+                        <span class="gauge-status" id="humiStatus">---</span>
+                        <span>100%</span>
+                    </div>
+                </div>
+
+                <!-- Door Status Card -->
+                <div class="card status-card" id="doorCard">
+                    <div class="card-header">
+                        <svg class="card-icon door-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 3H3v18h18V3z"/>
+                            <path d="M9 3v18"/>
+                            <circle cx="7" cy="12" r="0.5" fill="currentColor"/>
+                        </svg>
+                        <span class="card-label">Trạng thái cua</span>
+                    </div>
+                    <div class="door-status-display">
+                        <div class="door-visual" id="doorVisual">
+                            <svg class="door-svg" viewBox="0 0 120 140" fill="none">
+                                <!-- Door frame -->
+                                <rect x="10" y="5" width="100" height="130" rx="4" stroke="#334155" stroke-width="2.5" fill="none"/>
+                                <!-- Door panel -->
+                                <rect class="door-panel" id="doorPanel" x="15" y="10" width="90" height="120" rx="2" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+                                <!-- Door handle -->
+                                <circle class="door-handle" cx="90" cy="70" r="4" fill="#64748b"/>
+                                <!-- Seal indicator line -->
+                                <line class="door-seal" id="doorSeal" x1="14" y1="10" x2="14" y2="130" stroke="#10b981" stroke-width="3" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <div class="door-info">
+                            <span class="door-label" id="doorLabel">DONG</span>
+                            <div class="door-timer-section" id="doorTimerSection" style="display:none;">
+                                <span class="timer-label">Thời gian mo</span>
+                                <span class="door-timer" id="doorTimer">00:00:00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Alert Summary Card -->
+                <div class="card status-card" id="alertSummaryCard">
+                    <div class="card-header">
+                        <svg class="card-icon alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        <span class="card-label">Trạng thái cảnh báo</span>
+                    </div>
+                    <div class="alert-summary-list" id="alertSummaryList">
+                        <div class="alert-summary-item ok">
+                            <span class="alert-dot"></span>
+                            <span class="alert-item-label">Nhiệt độ</span>
+                            <span class="alert-item-status">Bình thường</span>
+                        </div>
+                        <div class="alert-summary-item ok">
+                            <span class="alert-dot"></span>
+                            <span class="alert-item-label">Độ ẩm</span>
+                            <span class="alert-item-status">Bình thường</span>
+                        </div>
+                        <div class="alert-summary-item ok">
+                            <span class="alert-dot"></span>
+                            <span class="alert-item-label">Cửa</span>
+                            <span class="alert-item-status">Bình thường</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mini Trend Chart -->
+            <div class="card chart-card">
+                <div class="card-header">
+                    <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                        <polyline points="17 6 23 6 23 12"/>
+                    </svg>
+                    <span class="card-label">Xu huong (5 phut gan nhat)</span>
+                </div>
+                <div class="chart-wrapper mini-chart">
+                    <canvas id="miniTrendChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================== HISTORY TAB ===================== -->
+        <section class="tab-content" id="tab-history">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Lịch sử do luong</h1>
+                    <p class="page-subtitle">Dữ liệu nhiệt độ & độ ẩm mỗi 5 giây</p>
+                </div>
+                <button class="btn btn-primary" id="exportExcelBtn">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Xuất Excel
+                </button>
+            </div>
+
+            <div class="card chart-card">
+                <div class="card-header">
+                    <span class="card-label">Biểu đồ nhiệt độ & độ ẩm</span>
+                    <div class="chart-legend-custom">
+                        <span class="legend-item">
+                            <span class="legend-color" style="background:#3b82f6"></span>
+                            Nhiệt độ
+                        </span>
+                        <span class="legend-item">
+                            <span class="legend-color" style="background:#06b6d4"></span>
+                            Độ ẩm
+                        </span>
+                    </div>
+                </div>
+                <div class="chart-wrapper full-chart">
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card table-card">
+                <div class="card-header">
+                    <span class="card-label">Bang du lieu</span>
+                    <div class="table-controls">
+                        <span class="record-count" id="recordCount">0 ban ghi</span>
+                        <button class="btn btn-ghost btn-sm" id="clearHistoryBtn">Xoa tat ca</button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="data-table" id="historyTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Thời gian</th>
+                                <th>Nhiệt độ (&deg;C)</th>
+                                <th>Độ ẩm (%)</th>
+                                <th>Trạng thái cua</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody">
+                        </tbody>
+                    </table>
+                </div>
+                <div class="table-pagination" id="historyPagination">
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================== ALERTS TAB ===================== -->
+        <section class="tab-content" id="tab-alerts">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Cảnh báo</h1>
+                    <p class="page-subtitle">Trạng thái và lịch sử cảnh báo hệ thống</p>
+                </div>
+            </div>
+
+            <!-- Active Alerts -->
+            <div class="active-alerts-section">
+                <h2 class="section-title">Cảnh báo dang hoat dong</h2>
+                <div class="active-alerts-grid" id="activeAlertsGrid">
+                    <div class="empty-state" id="noActiveAlerts">
+                        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                            <polyline points="22 4 12 14.01 9 11.01"/>
+                        </svg>
+                        <span>Không có cảnh báo nào</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alert History -->
+            <div class="card table-card">
+                <div class="card-header">
+                    <span class="card-label">Lịch sử cảnh báo</span>
+                    <div class="table-controls">
+                        <span class="record-count" id="alertRecordCount">0 ban ghi</span>
+                        <button class="btn btn-ghost btn-sm" id="clearAlertsBtn">Xoa tat ca</button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="data-table" id="alertsTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Thời gian</th>
+                                <th>Loai</th>
+                                <th>Muc do</th>
+                                <th>Chi tiet</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alertsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+                <div class="table-pagination" id="alertsPagination">
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================== CONTROL TAB ===================== -->
+        <section class="tab-content" id="tab-control">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Điều khiển</h1>
+                    <p class="page-subtitle">Cài đặt ngưỡng cảnh báo he thong</p>
+                </div>
+            </div>
+
+            <div class="control-grid">
+                <!-- Temperature Thresholds - 3 levels -->
+                <div class="card control-card">
+                    <div class="card-header">
+                        <svg class="card-icon temp-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+                        </svg>
+                        <span class="card-label">Ngưỡng nhiệt độ</span>
+                    </div>
+                    <div class="control-form">
+                        <div class="form-section-label lv1-label">Mức 1 (LED xanh lá)</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Dưới (&deg;C)</label>
+                                <input type="number" class="form-input" id="tempLv1Min" value="2" step="0.5">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Trên (&deg;C)</label>
+                                <input type="number" class="form-input" id="tempLv1Max" value="8" step="0.5">
+                            </div>
+                        </div>
+                        <div class="form-section-label warning-label">Mức 2 (LED vàng)</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Dưới (&deg;C)</label>
+                                <input type="number" class="form-input" id="tempLv2Min" value="0" step="0.5">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Trên (&deg;C)</label>
+                                <input type="number" class="form-input" id="tempLv2Max" value="10" step="0.5">
+                            </div>
+                        </div>
+                        <div class="form-section-label danger-label">Mức 3 (LED đỏ + Còi)</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Dưới (&deg;C)</label>
+                                <input type="number" class="form-input" id="tempLv3Min" value="-2" step="0.5">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Trên (&deg;C)</label>
+                                <input type="number" class="form-input" id="tempLv3Max" value="15" step="0.5">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Door Threshold - 3 levels -->
+                <div class="card control-card">
+                    <div class="card-header">
+                        <svg class="card-icon door-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 3H3v18h18V3z"/>
+                            <path d="M9 3v18"/>
+                            <circle cx="7" cy="12" r="0.5" fill="currentColor"/>
+                        </svg>
+                        <span class="card-label">Ngưỡng cửa</span>
+                    </div>
+                    <div class="control-form">
+                        <div class="form-group">
+                            <div class="form-section-label lv1-label">Mức 1 (LED xanh lá)</div>
+                            <label class="form-label">Thời gian mở (giây)</label>
+                            <input type="number" class="form-input" id="doorLv1Sec" value="30" step="1" min="5">
+                            <span class="form-hint">Cửa vừa mở, ghi nhận</span>
+                        </div>
+                        <div class="form-group">
+                            <div class="form-section-label warning-label">Mức 2 (LED vàng)</div>
+                            <label class="form-label">Thời gian mở (giây)</label>
+                            <input type="number" class="form-input" id="doorLv2Sec" value="60" step="1" min="10">
+                            <span class="form-hint">Mở cửa ngắn ~ 0.5-1 phút</span>
+                        </div>
+                        <div class="form-group">
+                            <div class="form-section-label danger-label">Mức 3 (LED đỏ + Còi)</div>
+                            <label class="form-label">Thời gian mở (giây)</label>
+                            <input type="number" class="form-input" id="doorLv3Sec" value="120" step="1" min="15">
+                            <span class="form-hint">Mở cửa lâu ~ 2-3 phút</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Info -->
+                <div class="card control-card">
+                    <div class="card-header">
+                        <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="16" x2="12" y2="12"/>
+                            <line x1="12" y1="8" x2="12.01" y2="8"/>
+                        </svg>
+                        <span class="card-label">He thong</span>
+                    </div>
+                    <div class="system-info">
+                        <div class="info-row">
+                            <span class="info-label">Cam bien</span>
+                            <span class="info-value">DHT22</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Vi điều khiển</span>
+                            <span class="info-value">ESP32</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Tan suat do</span>
+                            <span class="info-value">5 giây</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Firebase</span>
+                            <span class="info-value" id="sysConnectionInfo">Chờ kết nối</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Sensor ID</span>
+                            <span class="info-value" id="sysSensorId">---</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Phien ban</span>
+                            <span class="info-value">1.0.0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-actions">
+                <button class="btn btn-primary btn-lg" id="saveSettingsBtn">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                        <polyline points="17 21 17 13 7 13 7 21"/>
+                        <polyline points="7 3 7 8 15 8"/>
+                    </svg>
+                    Lưu cài đặt
+                </button>
+                <button class="btn btn-ghost btn-lg" id="resetSettingsBtn">Đặt lại mặc định</button>
+            </div>
+        </section>
+
+        <!-- ===== TAB 5: ABOUT ===== -->
+        <section class="tab-content" id="tab-about">
+            <div class="tab-header">
+                <h2>Giới thiệu</h2>
+                <p>Hệ thống IOT giám sát kho lạnh - Hướng dẫn sử dụng</p>
+            </div>
+
+            <div class="about-content">
+                <!-- Project Overview -->
+                <div class="card about-card">
+                    <div class="about-section-title">
+                        <svg class="about-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                        </svg>
+                        <h3>Mô tả đồ án</h3>
+                    </div>
+                    <div class="about-body">
+                        <p>Hệ thống IOT giám sát nhiệt độ kho lạnh mô phỏng bằng thùng xốp. Dữ liệu từ cảm biến được gửi lên Firebase Realtime Database và hiển thị trên web dashboard theo thời gian thực.</p>
+                        <div class="about-flow">
+                            <div class="flow-item">
+                                <div class="flow-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+                                </div>
+                                <span>DHT22</span>
+                                <small>Nhiệt độ & Độ ẩm</small>
+                            </div>
+                            <div class="flow-arrow">&rarr;</div>
+                            <div class="flow-item">
+                                <div class="flow-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                                </div>
+                                <span>ESP32</span>
+                                <small>Vi điều khiển</small>
+                            </div>
+                            <div class="flow-arrow">&rarr;</div>
+                            <div class="flow-item">
+                                <div class="flow-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+                                </div>
+                                <span>Firebase</span>
+                                <small>Cloud Database</small>
+                            </div>
+                            <div class="flow-arrow">&rarr;</div>
+                            <div class="flow-item">
+                                <div class="flow-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                                </div>
+                                <span>Web</span>
+                                <small>Dashboard</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3-Level Alert Explanation -->
+                <div class="card about-card">
+                    <div class="about-section-title">
+                        <svg class="about-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        <h3>Hệ thống 3 mức cảnh báo</h3>
+                    </div>
+                    <div class="about-body">
+                        <p>Hệ thống sử dụng <strong>3 đèn LED</strong> tương ứng với 3 mức độ cảnh báo. Mức cảnh báo được xác định dựa trên <strong>nhiệt độ</strong> và <strong>thời gian mở cửa</strong>. Mức nào cao nhất sẽ được kích hoạt (chỉ 1 đèn sáng tại 1 thời điểm).</p>
+
+                        <div class="alert-level-cards">
+                            <div class="alert-level-card level-ok">
+                                <div class="level-header">
+                                    <div class="level-led off"></div>
+                                    <span class="level-name">BÌNH THƯỜNG</span>
+                                </div>
+                                <p>Tất cả chỉ số trong ngưỡng an toàn. Không đèn nào sáng.</p>
+                                <div class="level-example">Ví dụ: Nhiệt độ 5&deg;C, cửa đóng</div>
+                            </div>
+
+                            <div class="alert-level-card level-1">
+                                <div class="level-header">
+                                    <div class="level-led green"></div>
+                                    <span class="level-name">MỨC 1 - LED XANH LÁ</span>
+                                </div>
+                                <p>Chỉ số bắt đầu lệch khỏi vùng an toàn. Cần theo dõi.</p>
+                                <div class="level-example">Ví dụ: Nhiệt độ 9&deg;C (vượt ngưỡng mức 1 = 8&deg;C) hoặc cửa mở > 30 giây</div>
+                            </div>
+
+                            <div class="alert-level-card level-2">
+                                <div class="level-header">
+                                    <div class="level-led yellow"></div>
+                                    <span class="level-name">MỨC 2 - LED VÀNG</span>
+                                </div>
+                                <p>Chỉ số lệch nhiều hơn. Cần xử lý sớm.</p>
+                                <div class="level-example">Ví dụ: Nhiệt độ 11&deg;C (vượt ngưỡng mức 2 = 10&deg;C) hoặc cửa mở > 60 giây</div>
+                            </div>
+
+                            <div class="alert-level-card level-3">
+                                <div class="level-header">
+                                    <div class="level-led red"></div>
+                                    <span class="level-name">MỨC 3 - LED ĐỎ + CÒI BÁO</span>
+                                </div>
+                                <p>Nguy hiểm! Cần hành động ngay. Còi báo kêu.</p>
+                                <div class="level-example">Ví dụ: Nhiệt độ 16&deg;C (vượt ngưỡng mức 3 = 15&deg;C) hoặc cửa mở > 120 giây</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- How to Set Thresholds -->
+                <div class="card about-card">
+                    <div class="about-section-title">
+                        <svg class="about-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                        <h3>Hướng dẫn cài đặt ngưỡng cảnh báo</h3>
+                    </div>
+                    <div class="about-body">
+                        <p>Mỗi mức cảnh báo có 2 giá trị: <strong>"Dưới"</strong> (nhiệt độ thấp nhất cho phép) và <strong>"Trên"</strong> (nhiệt độ cao nhất cho phép). Khi nhiệt độ nằm ngoài khoảng [Dưới, Trên] của mức nào thì mức đó sẽ được kích hoạt.</p>
+
+                        <div class="threshold-diagram">
+                            <div class="diagram-title">SƠ ĐỒ NGƯỠNG NHIỆT ĐỘ (MẶC ĐỊNH)</div>
+                            <div class="diagram-bar">
+                                <div class="bar-zone danger-zone left" style="width:12%">
+                                    <span>&lt; -2&deg;C</span>
+                                    <small>Mức 3</small>
+                                </div>
+                                <div class="bar-zone warning-zone left" style="width:8%">
+                                    <span>-2~0</span>
+                                    <small>Mức 2</small>
+                                </div>
+                                <div class="bar-zone lv1-zone left" style="width:8%">
+                                    <span>0~2</span>
+                                    <small>Mức 1</small>
+                                </div>
+                                <div class="bar-zone safe-zone" style="width:24%">
+                                    <span>2 ~ 8&deg;C</span>
+                                    <small>An toàn</small>
+                                </div>
+                                <div class="bar-zone lv1-zone right" style="width:8%">
+                                    <span>8~10</span>
+                                    <small>Mức 1</small>
+                                </div>
+                                <div class="bar-zone warning-zone right" style="width:16%">
+                                    <span>10~15</span>
+                                    <small>Mức 2</small>
+                                </div>
+                                <div class="bar-zone danger-zone right" style="width:24%">
+                                    <span>&gt; 15&deg;C</span>
+                                    <small>Mức 3</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="example-box">
+                            <div class="example-title">VÍ DỤ THỰC TẾ</div>
+                            <p>Nhiệt độ hiện tại là <strong>32&deg;C</strong>. Bạn muốn:</p>
+                            <ul>
+                                <li>Trên <strong>30&deg;C</strong> &rarr; bật LED xanh (mức 1): Đặt <strong>"Trên"</strong> của Mức 1 = <strong>30</strong></li>
+                                <li>Trên <strong>33&deg;C</strong> &rarr; bật LED vàng (mức 2): Đặt <strong>"Trên"</strong> của Mức 2 = <strong>33</strong></li>
+                                <li>Trên <strong>36&deg;C</strong> &rarr; bật LED đỏ + còi (mức 3): Đặt <strong>"Trên"</strong> của Mức 3 = <strong>36</strong></li>
+                            </ul>
+                            <p>Khi nhiệt độ = 32&deg;C &rarr; vuot Mức 1 (30) nhung chua den Mức 2 (33) &rarr; <strong>LED xanh sáng</strong>.</p>
+                            <p>Khi nhiệt độ tang len 34&deg;C &rarr; vuot Mức 2 (33) &rarr; <strong>LED vàng sáng</strong> (xanh tắt).</p>
+                            <p>Khi nhiệt độ tang len 37&deg;C &rarr; vuot Mức 3 (36) &rarr; <strong>LED đỏ sáng + còi kêu</strong>.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sync Delay Explanation -->
+                <div class="card about-card">
+                    <div class="about-section-title">
+                        <svg class="about-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        <h3>Tại sao có độ trễ giữa Web và LED?</h3>
+                    </div>
+                    <div class="about-body">
+                        <div class="sync-flow">
+                            <div class="sync-step">
+                                <div class="sync-number">1</div>
+                                <div class="sync-detail">
+                                    <strong>Ban bam "Lưu cài đặt" tren Web</strong>
+                                    <p>Ngưỡng được lưu vào Firebase. Web kiểm tra ngay lập tức và hiển thị cảnh báo trên màn hình (nếu vượt ngưỡng).</p>
+                                </div>
+                                <div class="sync-time">Ngay lập tức</div>
+                            </div>
+                            <div class="sync-step">
+                                <div class="sync-number">2</div>
+                                <div class="sync-detail">
+                                    <strong>ESP32 đọc ngưỡng mới từ Firebase</strong>
+                                    <p>ESP32 kiểm tra ngưỡng trên Firebase định kỳ mỗi 3 giây. Sau khi đọc được ngưỡng mới, ESP32 sẽ tính lại mức cảnh báo.</p>
+                                </div>
+                                <div class="sync-time">~ 3 giây</div>
+                            </div>
+                            <div class="sync-step">
+                                <div class="sync-number">3</div>
+                                <div class="sync-detail">
+                                    <strong>ESP32 gửi dữ liệu mới lên Firebase</strong>
+                                    <p>ESP32 gửi dữ liệu cảm biến + trạng thái cảnh báo mới lên Firebase mỗi 5 giây. Lúc này LED sẽ sáng theo mức mới.</p>
+                                </div>
+                                <div class="sync-time">~ 5 giây</div>
+                            </div>
+                            <div class="sync-step">
+                                <div class="sync-number">4</div>
+                                <div class="sync-detail">
+                                    <strong>Web nhận dữ liệu từ ESP32</strong>
+                                    <p>Web cập nhật trạng thái cảnh báo chính xác từ ESP32 (bao gồm trạng thái LED và còi).</p>
+                                </div>
+                                <div class="sync-time">Ngay lập tức</div>
+                            </div>
+                        </div>
+                        <div class="sync-summary">
+                            <strong>Tóm tắt:</strong> Sau khi bấm Lưu, đợi tối đa <strong>~3-5 giây</strong> để LED trên ESP32 cập nhật theo ngưỡng mới. Web sẽ hiện cảnh báo ngay nhưng LED cần chờ ESP32 đồng bộ.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Test Scenarios -->
+                <div class="card about-card">
+                    <div class="about-section-title">
+                        <svg class="about-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 11 12 14 22 4"/>
+                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                        </svg>
+                        <h3>Các tình huống thực nghiệm</h3>
+                    </div>
+                    <div class="about-body">
+                        <div class="scenario-table">
+                            <div class="scenario-row header">
+                                <div class="scenario-col">Tình huống</div>
+                                <div class="scenario-col">Thao tác</div>
+                                <div class="scenario-col">Kết quả</div>
+                            </div>
+                            <div class="scenario-row">
+                                <div class="scenario-col"><strong>Bình thường</strong></div>
+                                <div class="scenario-col">Đóng nắp thùng, để đá gel bên trong</div>
+                                <div class="scenario-col">Nhiệt độ giam và on dinh, không đèn nào sáng</div>
+                            </div>
+                            <div class="scenario-row">
+                                <div class="scenario-col"><strong>Mở cửa ngắn</strong></div>
+                                <div class="scenario-col">Mở nắp khoảng 0.5-1 phút</div>
+                                <div class="scenario-col">Dashboard ghi nhận cửa mở, nhiệt độ tăng nhẹ, LED xanh/vàng sáng</div>
+                            </div>
+                            <div class="scenario-row">
+                                <div class="scenario-col"><strong>Mở cửa lâu</strong></div>
+                                <div class="scenario-col">Mở nắp khoảng 2-3 phút</div>
+                                <div class="scenario-col">Cảnh báo "Cửa mở quá lâu", LED đỏ sáng + còi kêu</div>
+                            </div>
+                            <div class="scenario-row">
+                                <div class="scenario-col"><strong>Mất lạnh</strong></div>
+                                <div class="scenario-col">Lấy đá gel ra hoặc mở nắp lâu</div>
+                                <div class="scenario-col">Nhiệt độ vuot nguong, LED đỏ sáng + còi kêu</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
