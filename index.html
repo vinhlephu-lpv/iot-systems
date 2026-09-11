@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -518,6 +519,14 @@
                                 <span>DHT22</span>
                                 <small>Nhiệt độ & Độ ẩm</small>
                             </div>
+                            <div class="flow-arrow">+</div>
+                            <div class="flow-item">
+                                <div class="flow-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><circle cx="6" cy="12" r="1"/></svg>
+                                </div>
+                                <span>Cảm biến cửa</span>
+                                <small>Công tắc từ Đóng/Mở</small>
+                            </div>
                             <div class="flow-arrow">&rarr;</div>
                             <div class="flow-item">
                                 <div class="flow-icon">
@@ -565,8 +574,8 @@
                                     <div class="level-led green"></div>
                                     <span class="level-name">BÌNH THƯỜNG - ĐÈN XANH</span>
                                 </div>
-                                <p>Cửa đóng (CLOSED) <strong>VÀ</strong> Nhiệt độ trong khoảng an toàn (temp_min &le; Nhiệt độ &le; temp_max).</p>
-                                <div class="level-example">Ví dụ: Nhiệt độ 5&deg;C, cửa đóng kín.</div>
+                                <p>Cửa đóng kín (ĐANG ĐÓNG) <strong>VÀ</strong> Nhiệt độ trong khoảng an toàn (temp_min &le; Nhiệt độ &le; temp_max).</p>
+                                <div class="level-example">Ví dụ: Nhiệt độ 5&deg;C, cửa đóng kín. Web hiển thị: <strong>Bình thường</strong>, LED Xanh sáng.</div>
                             </div>
 
                             <div class="alert-level-card level-2">
@@ -574,8 +583,8 @@
                                     <div class="level-led yellow"></div>
                                     <span class="level-name">ĐANG MỞ CỬA - ĐÈN VÀNG</span>
                                 </div>
-                                <p>Cửa đang mở (&gt; 0s), chưa vượt quá thời gian cài đặt, nhiệt độ còn an toàn. Hiển thị thời gian mở cửa.</p>
-                                <div class="level-example">Ví dụ: Cửa mở 5s (ngưỡng cho phép 10s).</div>
+                                <p>Cửa đang mở (&gt; 0s), chưa vượt quá thời gian cài đặt, nhiệt độ còn an toàn. Hiển thị bộ đếm thời gian mở cửa.</p>
+                                <div class="level-example">Ví dụ: Cửa mở 5s (ngưỡng 10s). Web hiển thị: <strong>đang mở cửa &lt; 10s</strong>, LED Vàng sáng.</div>
                             </div>
 
                             <div class="alert-level-card level-3">
@@ -584,7 +593,7 @@
                                     <span class="level-name">CẦN XỬ LÝ - ĐÈN ĐỎ + CÒI</span>
                                 </div>
                                 <p>Cửa mở quá lâu (&ge; thời gian cài đặt) <strong>HOẶC</strong> Nhiệt độ vượt ngưỡng an toàn (báo động tức thì).</p>
-                                <div class="level-example">Ví dụ: Cửa mở &ge; 10s HOẶC nhiệt độ &gt; 8&deg;C / &lt; 2&deg;C.</div>
+                                <div class="level-example">Ví dụ: Cửa mở &ge; 10s &rarr; Web hiển thị: <strong>cần xử lý - cửa mở quá lâu</strong>; Nhiệt độ 33&deg;C &gt; 25&deg;C &rarr; Web hiển thị: <strong>Nhiệt độ vượt ngưỡng 33.0 &gt; 25.0&deg;C</strong>. LED Đỏ sáng + Còi hú.</div>
                             </div>
                         </div>
                     </div>
@@ -597,39 +606,40 @@
                             <circle cx="12" cy="12" r="10"/>
                             <polyline points="12 6 12 12 16 14"/>
                         </svg>
-                        <h3>Thời gian gửi nhận dữ liệu 2 chiều từ server và ESP32</h3>
+                        <h3>Hướng dẫn vận hành & Quy trình đồng bộ dữ liệu</h3>
                     </div>
                     <div class="about-body">
+                        <p style="margin-bottom: 16px; color: var(--text-secondary); font-size: 0.9rem;">Quy trình thiết lập cấu hình, truyền nhận dữ liệu hai chiều và kích hoạt cảnh báo tự động trên toàn hệ thống:</p>
                         <div class="sync-flow">
                             <div class="sync-step">
                                 <div class="sync-number">1</div>
                                 <div class="sync-detail">
-                                    <strong>Bạn chỉnh thanh trượt trên Web</strong>
-                                    <p>Ngưỡng tự động lưu và đồng bộ tức thì lên Firebase Realtime Database.</p>
+                                    <strong>Thiết lập ngưỡng giám sát trên Web</strong>
+                                    <p>Truy cập tab Cài đặt, điều chỉnh ngưỡng nhiệt độ (tối thiểu / tối đa) hoặc thời gian cho phép mở cửa, sau đó nhấn "Lưu cài đặt". Cấu hình mới lập tức được đồng bộ lên Firebase Realtime Database.</p>
                                 </div>
                                 <div class="sync-time">Ngay lập tức</div>
                             </div>
                             <div class="sync-step">
                                 <div class="sync-number">2</div>
                                 <div class="sync-detail">
-                                    <strong>ESP32 cập nhật ngưỡng mới từ Firebase</strong>
-                                    <p>ESP32 đọc ngưỡng từ Firebase, áp dụng ngay vào luồng giám sát thời gian thực.</p>
+                                    <strong>ESP32 nạp cấu hình mới từ Firebase</strong>
+                                    <p>Vi điều khiển ESP32 tự động lắng nghe và tải các thông số ngưỡng vừa cập nhật vào bộ nhớ giám sát thời gian thực.</p>
                                 </div>
                                 <div class="sync-time">~ 1-2 giây</div>
                             </div>
                             <div class="sync-step">
                                 <div class="sync-number">3</div>
                                 <div class="sync-detail">
-                                    <strong>ESP32 kiểm tra phần cứng & cảnh báo tức thì</strong>
-                                    <p>Luồng phần cứng chạy chu kỳ 20ms, khi cửa mở chạm mốc quy định là bật Đèn Đỏ + Còi ngay lập tức không trễ.</p>
+                                    <strong>Giám sát cảm biến & kích hoạt cảnh báo</strong>
+                                    <p>Luồng phần cứng độc lập trên ESP32 quét liên tục với chu kỳ 20ms. Khi cửa mở quá thời gian quy định hoặc nhiệt độ vượt ngưỡng an toàn, hệ thống tự động kích hoạt Đèn Đỏ và Còi báo động tức thì.</p>
                                 </div>
                                 <div class="sync-time">Tức thì (20ms)</div>
                             </div>
                             <div class="sync-step">
                                 <div class="sync-number">4</div>
                                 <div class="sync-detail">
-                                    <strong>Web đồng bộ trạng thái thực tế</strong>
-                                    <p>Web hiển thị chính xác trạng thái cảm biến, đèn LED và còi báo.</p>
+                                    <strong>Hiển thị trực quan & lưu trữ lịch sử</strong>
+                                    <p>Dữ liệu cảm biến thời gian thực, thời gian mở cửa, trạng thái thiết bị và các sự kiện cảnh báo được hiển thị đầy đủ trên Dashboard, đồng thời lưu vào lịch sử hệ thống.</p>
                                 </div>
                                 <div class="sync-time">Realtime</div>
                             </div>

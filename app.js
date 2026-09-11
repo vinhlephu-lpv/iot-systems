@@ -42,6 +42,7 @@
         sensorData: 'sensor_data',
         history: 'history',
         thresholds: 'thresholds',
+        alerts: 'alerts'
     };
 
     // ─── State ───────────────────────────────────────────
@@ -219,18 +220,20 @@
 
     // ─── Door Status ─────────────────────────────────────
     function updateDoorDisplay(isOpen) {
+        const doorLimit = state.thresholds.door_delay_sec || 10;
         if (isOpen) {
             dom.doorCard.className = 'card status-card door-open';
             dom.doorPanel.classList.add('open');
             dom.doorSeal.classList.add('broken');
-            dom.doorLabel.textContent = 'MO';
-            dom.doorLabel.className = 'door-label open';
+            const isLong = (state.doorOpenSec >= doorLimit);
+            dom.doorLabel.textContent = isLong ? 'cần xử lý - cửa mở quá lâu' : `đang mở cửa < ${doorLimit}s`;
+            dom.doorLabel.className = isLong ? 'door-label open danger' : 'door-label open';
             dom.doorTimerSection.style.display = 'flex';
         } else {
             dom.doorCard.className = 'card status-card door-closed';
             dom.doorPanel.classList.remove('open');
             dom.doorSeal.classList.remove('broken');
-            dom.doorLabel.textContent = 'DONG';
+            dom.doorLabel.textContent = 'ĐANG ĐÓNG';
             dom.doorLabel.className = 'door-label closed';
             dom.doorTimerSection.style.display = 'none';
         }
@@ -239,6 +242,12 @@
     function setDoorTimerDisplay(sec) {
         state.doorOpenSec = sec || 0;
         dom.doorTimer.textContent = formatDuration(state.doorOpenSec);
+        const doorLimit = state.thresholds.door_delay_sec || 10;
+        if (dom.doorLabel && state.doorOpen) {
+            const isLong = (state.doorOpenSec >= doorLimit);
+            dom.doorLabel.textContent = isLong ? 'cần xử lý - cửa mở quá lâu' : `đang mở cửa < ${doorLimit}s`;
+            dom.doorLabel.className = isLong ? 'door-label open danger' : 'door-label open';
+        }
         updateAlertSummaryItems();
     }
 
@@ -267,33 +276,46 @@
         };
         state.activeAlerts.set(key, alert);
 
-        state.alertHistory.unshift({
-            ...alert,
-            resolvedAt: null
-        });
+        if (!state.firebaseReady) {
+            state.alertHistory.unshift({
+                ...alert,
+                resolvedAt: null
+            });
 
+            if (state.alertHistory.length > 500) {
+                state.alertHistory.pop();
+            }
+        }
+
+        updateAlertDisplays();
+    }
+
+    function clearAlertByKey(key) {
+        if (!state.activeAlerts.has(key)) return;
+        state.activeAlerts.delete(key);
+        const histItem = state.alertHistory.find(h => h.id === key && !h.resolvedAt);
+        if (histItem) histItem.resolvedAt = new Date();
         updateAlertDisplays();
     }
 
     function clearAlert(type) {
-        const toRemove = [];
+        let changed = false;
         state.activeAlerts.forEach((alert, key) => {
             if (alert.type === type) {
-                toRemove.push(key);
+                state.activeAlerts.delete(key);
                 const histItem = state.alertHistory.find(h => h.id === key && !h.resolvedAt);
                 if (histItem) histItem.resolvedAt = new Date();
+                changed = true;
             }
         });
-        toRemove.forEach(key => state.activeAlerts.delete(key));
-        updateAlertDisplays();
+        if (changed) updateAlertDisplays();
     }
 
     function getAlertTypeLabel(type) {
+        if (type.startsWith('temp')) return 'Nhiệt độ';
         switch (type) {
-            case 'temp': return 'Nhiệt độ';
             case 'humi': return 'Độ ẩm';
             case 'door': return 'Cửa';
-            case 'esp_alarm': return 'ESP32';
             default: return type;
         }
     }
@@ -339,16 +361,17 @@
             }
         }
 
-        // Cửa: Chỉ báo "Đang đóng" hoặc "Đang mở" (hoặc "Mở quá lâu")
+        // Cửa: Chỉ báo "Đang đóng" hoặc "đang mở cửa < Xs" (hoặc "cần xử lý - cửa mở quá lâu")
         let doorStatus = 'ok';
         let doorText = 'Đang đóng';
+        const doorLimit = state.thresholds.door_delay_sec || 10;
         if (state.doorOpen) {
-            if (state.doorOpenSec >= (state.thresholds.door_delay_sec || 10)) {
+            if (state.doorOpenSec >= doorLimit) {
                 doorStatus = 'danger';
-                doorText = 'Mở quá lâu';
+                doorText = 'cần xử lý - cửa mở quá lâu';
             } else {
                 doorStatus = 'warning';
-                doorText = 'Đang mở';
+                doorText = `đang mở cửa < ${doorLimit}s`;
             }
         }
 
@@ -396,41 +419,19 @@
     // ─── Check Thresholds ────────────────────────────────
     function checkThresholds(temp, humi) {
         const th = state.thresholds;
-        if (temp < th.temp_min || temp > th.temp_max) {
-            setAlert('temp', 'danger', 'Nhiệt độ vượt ngưỡng');
-        } else {
-            clearAlert('temp');
-        }
-    }
-
-    // ─── Process ESP32 Alarm Field ───────────────────────
-    function processEspAlarm(alarm) {
-        if (!alarm || alarm === 'NONE' || alarm === '0' || alarm === '') {
-            if (state.espAlarm !== 'NONE') {
-                clearAlert('esp_alarm');
+        if (temp < th.temp_min) {
+            clearAlertByKey('temp-max');
+            if (!state.activeAlerts.has('temp-min')) {
+                setAlert('temp-min', 'danger', `Nhiệt độ dưới ngưỡng ${temp.toFixed(1)} < ${th.temp_min}°C`);
             }
-            state.espAlarm = 'NONE';
-            return;
-        }
-
-        state.espAlarm = alarm;
-
-        if (alarm === '1') {
-            setAlert('esp_alarm', 'warning', 'ESP32: Đang mở cửa');
-        } else if (alarm === '2') {
-            setAlert('esp_alarm', 'danger', 'ESP32: Cần xử lý (Đèn đỏ + Còi)');
-        } else {
-            const alarmMap = {
-                'TEMP_HIGH': { severity: 'danger', msg: 'ESP32: Nhiệt độ vượt ngưỡng cao' },
-                'TEMP_LOW': { severity: 'danger', msg: 'ESP32: Nhiệt độ dưới ngưỡng thấp' },
-                'DOOR_OPEN_LONG': { severity: 'danger', msg: 'ESP32: Cửa mở quá lâu' },
-            };
-            const mapped = alarmMap[alarm];
-            if (mapped) {
-                setAlert('esp_alarm', mapped.severity, mapped.msg);
-            } else {
-                setAlert('esp_alarm', 'warning', 'ESP32: ' + alarm);
+        } else if (temp > th.temp_max) {
+            clearAlertByKey('temp-min');
+            if (!state.activeAlerts.has('temp-max')) {
+                setAlert('temp-max', 'danger', `Nhiệt độ vượt ngưỡng ${temp.toFixed(1)} > ${th.temp_max}°C`);
             }
+        } else {
+            clearAlertByKey('temp-min');
+            clearAlertByKey('temp-max');
         }
     }
 
@@ -444,6 +445,7 @@
         const sensorId = data.sensor_id || '---';
         const isOpen = (doorStatus === 'OPEN');
         const effectiveDoorSec = isOpen ? (parseInt(doorOpenSec, 10) || 0) : 0;
+        state.espAlarm = alarm;
 
         // Cập nhật giá trị hiển thị Nhiệt độ & Đồng hồ đo (Gauges)
         if (temp !== undefined && temp !== null && !isNaN(temp)) {
@@ -469,25 +471,40 @@
             updateDoorDisplay(isOpen);
         }
 
+        const delayThreshold = state.thresholds.door_delay_sec || 10;
+
         if (isOpen) {
             // Hiển thị trực tiếp số giây nhận từ ESP32 qua Firebase
             setDoorTimerDisplay(effectiveDoorSec);
 
-            const delayThreshold = state.thresholds.door_delay_sec || 10;
             if (effectiveDoorSec >= delayThreshold || alarm === 'DOOR_OPEN_LONG' || alarm === '2') {
-                clearAlert('door');
-                setAlert('door', 'danger', 'Cửa mở quá lâu');
+                // Đã mở quá ngưỡng cho phép -> CẦN XỬ LÝ (chỉ ghi 1 lần chuyển trạng thái)
+                if (state.activeAlerts.has('door-warning')) {
+                    clearAlertByKey('door-warning');
+                }
+                if (!state.activeAlerts.has('door-danger')) {
+                    setAlert('door', 'danger', 'cần xử lý - cửa mở quá lâu');
+                }
             } else {
-                clearAlert('door');
-                setAlert('door', 'warning', 'Cửa đang mở');
+                // Đang mở cửa trong ngưỡng cho phép -> ĐANG MỞ CỬA (chỉ ghi 1 lần khi bắt đầu mở)
+                if (state.activeAlerts.has('door-danger')) {
+                    clearAlertByKey('door-danger');
+                }
+                if (!state.activeAlerts.has('door-warning')) {
+                    setAlert('door', 'warning', `đang mở cửa < ${delayThreshold}s`);
+                }
             }
         } else {
-            // Cửa đóng -> ngay lập tức reset về 00:00:00 và xóa cảnh báo cửa
-            clearAlert('door');
+            // Cửa đóng -> ngay lập tức reset về 00:00:00 và xóa toàn bộ cảnh báo cửa
             resetDoorTimer();
+            if (state.activeAlerts.has('door-warning')) {
+                clearAlertByKey('door-warning');
+            }
+            if (state.activeAlerts.has('door-danger')) {
+                clearAlertByKey('door-danger');
+            }
         }
 
-        processEspAlarm(alarm);
         checkThresholds(temp, humi);
         updateAlertSummaryItems();
 
@@ -888,6 +905,34 @@
                 const fileName = 'LichSu_KhoLanh_' + new Date().toISOString().slice(0, 10) + '.xlsx';
                 downloadExcelBlob(buffer, fileName);
                 showToast('Đã xuất file Excel (' + rowsToExport.length + ' bản ghi)', 'success');
+            } else if (typeof XLSX !== 'undefined') {
+                const fileName = 'LichSu_KhoLanh_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+                const data = rowsToExport.map((row, i) => {
+                    const isDoorOpen = (row.door_status === 'OPEN');
+                    const doorText = isDoorOpen ? 'Mở' : 'Đóng';
+                    const doorSec = isDoorOpen ? (parseInt(row.door_open_sec) || 0) : 0;
+                    let alarmStr = 'Bình thường';
+                    const a = String(row.alarm || '0').toUpperCase();
+                    if (a === '2' || (isDoorOpen && doorSec >= (state.thresholds.door_delay_sec || 10))) {
+                        alarmStr = 'Cần xử lý';
+                    } else if (isDoorOpen) {
+                        alarmStr = 'Đang mở cửa';
+                    }
+                    return {
+                        'STT': i + 1,
+                        'Thời gian': formatExcelDate(row.timestamp),
+                        'Nhiệt độ (°C)': formatExcelNum(row.temperature_c),
+                        'Độ ẩm (%)': formatExcelNum(row.humidity),
+                        'Trạng thái cửa': doorText,
+                        'Thời gian mở (s)': doorSec,
+                        'Cảnh báo': alarmStr
+                    };
+                });
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Lịch sử');
+                XLSX.writeFile(wb, fileName);
+                showToast('Đã xuất file Excel (' + rowsToExport.length + ' bản ghi)', 'success');
             } else {
                 showToast('Chưa tải xong thư viện Excel, vui lòng thử lại', 'error');
             }
@@ -1068,6 +1113,7 @@
             const data = snapshot.val();
             if (data && data.temperature_c !== undefined) {
                 const record = {
+                    key: snapshot.key,
                     timestamp: new Date(data.timestamp || Date.now()),
                     temperature_c: parseFloat(data.temperature_c) || 0,
                     humidity: parseFloat(data.humidity) || 0,
@@ -1076,11 +1122,8 @@
                     alarm: data.alarm || 'NONE'
                 };
 
-                // Tranh trung lap voi du lieu tu sensor_data listener
-                const isDuplicate = state.historyData.some(h =>
-                    Math.abs(h.timestamp.getTime() - record.timestamp.getTime()) < 2000 &&
-                    h.temperature_c === record.temperature_c
-                );
+                // Tranh trung lap bang Firebase unique key
+                const isDuplicate = state.historyData.some(h => (h.key && h.key === snapshot.key) || (Math.abs(h.timestamp.getTime() - record.timestamp.getTime()) < 1000 && h.door_open_sec === record.door_open_sec));
 
                 if (!isDuplicate) {
                     state.historyData.push(record);
@@ -1090,6 +1133,30 @@
                     }
                     renderHistoryTable();
                     updateHistoryChart();
+                }
+            }
+        });
+
+        // Doc lich su canh bao tu Firebase (bao toan day du khi F5, toi da 200 ban ghi gan nhat)
+        db.ref(DB_PATHS.alerts).orderByChild('timestamp').limitToLast(200).on('child_added', (snapshot) => {
+            const data = snapshot.val();
+            if (data && data.message) {
+                const record = {
+                    key: snapshot.key,
+                    type: data.type || 'door',
+                    severity: data.severity || 'warning',
+                    message: data.message,
+                    timestamp: new Date(data.timestamp || Date.now())
+                };
+
+                const isDuplicate = state.alertHistory.some(a => (a.key && a.key === snapshot.key) || (Math.abs(a.timestamp.getTime() - record.timestamp.getTime()) < 1000 && a.message === record.message));
+                if (!isDuplicate) {
+                    state.alertHistory.unshift(record);
+                    state.alertHistory.sort((a, b) => b.timestamp - a.timestamp);
+                    if (state.alertHistory.length > 500) {
+                        state.alertHistory.pop();
+                    }
+                    renderAlertsTable();
                 }
             }
         });
@@ -1191,7 +1258,13 @@
             state.alertHistory = [];
             state.alertsPage = 1;
             renderAlertsTable();
-            showToast('Đã xóa lịch sử cảnh báo', 'info');
+            if (state.firebaseReady && state.db) {
+                state.db.ref(DB_PATHS.alerts).remove()
+                    .then(() => showToast('Đã xóa lịch sử cảnh báo trên Firebase', 'info'))
+                    .catch(() => showToast('Đã xóa lịch sử cảnh báo', 'info'));
+            } else {
+                showToast('Đã xóa lịch sử cảnh báo', 'info');
+            }
         });
 
         dom.saveSettingsBtn.addEventListener('click', saveThresholds);

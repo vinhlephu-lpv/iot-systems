@@ -27,6 +27,7 @@ const char* FIREBASE_AUTH = "";
 #define FB_PATH_SENSOR     "/sensor_data.json"
 #define FB_PATH_HISTORY    "/history.json"
 #define FB_PATH_THRESHOLDS "/thresholds.json"
+#define FB_PATH_ALERTS     "/alerts.json"
 
 const char* SENSOR_ID = "ESP32_KHO_LANH";
 
@@ -38,6 +39,7 @@ const char* SENSOR_ID = "ESP32_KHO_LANH";
 #define PIN_LED_RED       32   // LED Do      - Can xu ly
 #define PIN_LED_ONBOARD   2    // LED onboard ESP32 (Bao WiFi)
 #define PIN_BUZZER        16   // Coi buzzer  - Can xu ly
+#define ENABLE_BUZZER     false // Dat false de tat coi (che do ban dem/im lang), den do van sang binh thuong
 
 // ==================== 4. CAU HINH CAM BIEN ====================
 #define DHTTYPE DHT22
@@ -75,17 +77,29 @@ String alarmString = "0";
 // Co bao can day du lieu len Firebase ngay (khi doi trang thai)
 volatile bool flagNeedPushNow = false;
 
+// Co bao su kien canh bao can day len /alerts tren Firebase
+volatile bool flagDoorJustOpened    = false;
+volatile bool flagDoorBecameTooLong = false;
+volatile bool flagDoorJustClosed    = false;
+volatile bool flagTempBecameHigh    = false;
+volatile bool flagTempBecameLow     = false;
+volatile bool flagTempRecovered     = false;
+
 // Mutex de bao ve du lieu chia se giua 2 Task
 portMUX_TYPE stateMutex = portMUX_INITIALIZER_UNLOCKED;
 
 // ==================== 7. SSL & HTTP CLIENTS ====================
-// Kenh 1: Chuyen gui sensor_data real-time, duy tri ket noi Keep-Alive (toc do ~40-80ms/lan)
+// Kenh 1: Chuyen gui sensor_data real-time (Keep-Alive ~40-80ms/lan)
 WiFiClientSecure sslSensor;
 HTTPClient httpSensor;
 
-// Kenh 2: Xu ly doc nguong (thresholds) va ghi lich su (history) khi he thong ranh
-WiFiClientSecure sslAux;
-HTTPClient httpAux;
+// Kenh 2: Chuyen ghi lich su history dinh ky 5s/lan (Keep-Alive ~40-80ms/lan)
+WiFiClientSecure sslHistory;
+HTTPClient httpHistory;
+
+// Kenh 3: Chuyen doc nguong thresholds moi 1.5s (Keep-Alive ~30-50ms/lan)
+WiFiClientSecure sslThresh;
+HTTPClient httpThresh;
 
 // ==================== HAM DOC CAM BIEN CUA MC-38 ====================
 inline bool readDoorState() {
@@ -114,7 +128,11 @@ void updateOutputs(int level) {
   }
   if (PIN_BUZZER >= 0 && buzzerActive != b) {
     buzzerActive = b;
+    #if ENABLE_BUZZER
     digitalWrite(PIN_BUZZER, b ? HIGH : LOW);
+    #else
+    digitalWrite(PIN_BUZZER, LOW); // Luon giu muc LOW de tat coi
+    #endif
   }
 }
 
@@ -144,6 +162,10 @@ void hardwareAlarmTask(void *pvParameters) {
 
     portENTER_CRITICAL(&stateMutex);
 
+    static bool doorDelayExceeded = false;
+    static bool lastTempHigh = false;
+    static bool lastTempLow  = false;
+
     // 1. Kiem tra thay doi cua
     if (doorNow) {
       if (!isDoorOpen) {
@@ -151,25 +173,53 @@ void hardwareAlarmTask(void *pvParameters) {
         isDoorOpen = true;
         doorOpenStartTime = now;
         doorOpenDurationSec = 0;
+        doorDelayExceeded = false;
+        flagDoorJustOpened = true;
         flagNeedPushNow = true;
       } else {
         // Cua van dang mo
         doorOpenDurationSec = (now - doorOpenStartTime) / 1000;
+        if (doorOpenDurationSec >= DOOR_DELAY_SEC && !doorDelayExceeded) {
+          doorDelayExceeded = true;
+          flagDoorBecameTooLong = true;
+          flagNeedPushNow = true;
+        }
       }
     } else {
       if (isDoorOpen) {
         // Vua dong cua
         isDoorOpen = false;
         doorOpenDurationSec = 0;
+        doorDelayExceeded = false;
+        flagDoorJustClosed = true;
         flagNeedPushNow = true;
       }
     }
 
     // 2. Danh gia trang thai canh bao
-    // - Binh thuong (0 - Xanh): Cua dong VA Nhiet do an toan
-    // - Dang mo cua (1 - Vang): Cua dang mo (> 0s), chua qua han, nhiet do an toan
-    // - Can xu ly (2 - Do + Coi): Cua mo qua lau (>= DOOR_DELAY_SEC) HOAC Nhiet do vuot nguong
-    bool isTempAlert = dhtReady && (currentTemp < TEMP_MIN || currentTemp > TEMP_MAX);
+    bool isTempHigh = dhtReady && (currentTemp > TEMP_MAX);
+    bool isTempLow  = dhtReady && (currentTemp < TEMP_MIN);
+
+    if (dhtReady) {
+      if (isTempHigh && !lastTempHigh) {
+        lastTempHigh = true;
+        lastTempLow = false;
+        flagTempBecameHigh = true;
+        flagNeedPushNow = true;
+      } else if (isTempLow && !lastTempLow) {
+        lastTempLow = true;
+        lastTempHigh = false;
+        flagTempBecameLow = true;
+        flagNeedPushNow = true;
+      } else if (!isTempHigh && !isTempLow && (lastTempHigh || lastTempLow)) {
+        lastTempHigh = false;
+        lastTempLow = false;
+        flagTempRecovered = true;
+        flagNeedPushNow = true;
+      }
+    }
+
+    bool isTempAlert = isTempHigh || isTempLow;
     bool isDoorTooLong = isDoorOpen && (doorOpenDurationSec >= DOOR_DELAY_SEC);
 
     int targetLevel = 0;
@@ -310,33 +360,70 @@ void pushHistory() {
   json += "}";
 
   String url = buildFirebaseUrl(FB_PATH_HISTORY);
-  httpAux.begin(sslAux, url);
-  httpAux.setConnectTimeout(2500);
-  httpAux.setTimeout(2500);
-  httpAux.addHeader("Content-Type", "application/json");
 
-  int code = httpAux.POST(json);
-  if (code > 0) {
-    httpAux.getString();
-    Serial.printf("[HISTORY] Ghi lich su -> HTTP %d (Temp: %.1f, Cua: %s)\n", code, t, door ? "OPEN" : "CLOSED");
-  } else {
-    Serial.printf("[HISTORY] Loi ghi lich su: %s\n", httpAux.errorToString(code).c_str());
-    sslAux.stop();
+  if (!httpHistory.connected()) {
+    httpHistory.begin(sslHistory, url);
+    httpHistory.setReuse(true);
+    httpHistory.setConnectTimeout(2500);
+    httpHistory.setTimeout(2500);
   }
-  httpAux.end();
+  httpHistory.addHeader("Content-Type", "application/json");
+
+  int code = httpHistory.POST(json);
+  if (code > 0) {
+    httpHistory.getString();
+    Serial.printf("[HISTORY] Ghi lich su -> HTTP %d (Temp: %.1f, Cua: %s, Sec: %lu)\n", code, t, door ? "OPEN" : "CLOSED", doorSec);
+  } else {
+    Serial.printf("[HISTORY] Loi ghi lich su: %s (%d)\n", httpHistory.errorToString(code).c_str(), code);
+    httpHistory.end();
+    sslHistory.stop();
+  }
 }
 
+// ==================== PUSH CANH BAO LEN FIREBASE (/alerts) ====================
+void pushAlert(const char* type, const char* severity, const char* message) {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  String json = "{";
+  json += "\"type\":\"" + String(type) + "\",";
+  json += "\"severity\":\"" + String(severity) + "\",";
+  json += "\"message\":\"" + String(message) + "\",";
+  json += "\"timestamp\":{\".sv\":\"timestamp\"}";
+  json += "}";
+
+  String url = buildFirebaseUrl(FB_PATH_ALERTS);
+  httpHistory.end();
+  httpHistory.begin(sslHistory, url);
+  httpHistory.setConnectTimeout(2500);
+  httpHistory.setTimeout(2500);
+  httpHistory.addHeader("Content-Type", "application/json");
+
+  int code = httpHistory.POST(json);
+  if (code > 0) {
+    httpHistory.getString();
+    Serial.printf("[ALERT] Firebase POST -> %s: %s (HTTP %d)\n", severity, message, code);
+  } else {
+    Serial.printf("[ALERT] Loi ghi Firebase: %s (%d)\n", httpHistory.errorToString(code).c_str(), code);
+    sslHistory.stop();
+  }
+  httpHistory.end();
+}
+
+// ==================== DOC NGUONG CANH BAO TU FIREBASE ====================
 void readThresholds() {
   if (WiFi.status() != WL_CONNECTED) return;
 
   String url = buildFirebaseUrl(FB_PATH_THRESHOLDS);
-  httpAux.begin(sslAux, url);
-  httpAux.setConnectTimeout(2500);
-  httpAux.setTimeout(2500);
+  if (!httpThresh.connected()) {
+    httpThresh.begin(sslThresh, url);
+    httpThresh.setReuse(true);
+    httpThresh.setConnectTimeout(2000);
+    httpThresh.setTimeout(2000);
+  }
 
-  int code = httpAux.GET();
+  int code = httpThresh.GET();
   if (code == 200) {
-    String payload = httpAux.getString();
+    String payload = httpThresh.getString();
 
     if (payload != "null" && payload.length() > 5) {
       float tmin, tmax, dsec;
@@ -361,13 +448,24 @@ void readThresholds() {
         Serial.printf("[NGUONG MOI] Temp: [%.1f - %.1f]C | Cua: %lu giay\n", TEMP_MIN, TEMP_MAX, DOOR_DELAY_SEC);
         portENTER_CRITICAL(&stateMutex);
         flagNeedPushNow = true;
+        // Cap nhat phan ung den LED ngay tuc khac khi nguong thay doi!
+        bool isTempAlert = dhtReady && (currentTemp < TEMP_MIN || currentTemp > TEMP_MAX);
+        bool isDoorTooLong = isDoorOpen && (doorOpenDurationSec >= DOOR_DELAY_SEC);
+        if (isTempAlert || isDoorTooLong) {
+          currentAlertLevel = 2;
+        } else if (isDoorOpen) {
+          currentAlertLevel = 1;
+        } else {
+          currentAlertLevel = 0;
+        }
         portEXIT_CRITICAL(&stateMutex);
+        updateOutputs(currentAlertLevel);
       }
     }
   } else {
-    sslAux.stop();
+    httpThresh.end();
+    sslThresh.stop();
   }
-  httpAux.end();
 }
 
 // ==================== SETUP ====================
@@ -399,11 +497,13 @@ void setup() {
   dht.begin();
   Serial.println("[DHT22] Da khoi dong cam bien.");
 
-  // SSL Setup cho 2 kenh
+  // SSL Setup cho 3 kenh Keep-Alive
   sslSensor.setInsecure();
   sslSensor.setTimeout(3);
-  sslAux.setInsecure();
-  sslAux.setTimeout(3);
+  sslHistory.setInsecure();
+  sslHistory.setTimeout(3);
+  sslThresh.setInsecure();
+  sslThresh.setTimeout(3);
 
   // KHOI TAO TASK PHAN CUNG REAL-TIME (FreeRTOS)
   // Uu tien cao (Priority 2) de chay ngay ca khi mang dang goi
@@ -477,44 +577,71 @@ void loop() {
     }
   }
 
-  // 2. UU TIEN SO 1: KHI CUA VUA DOI TRANG THAI (VUA MO / VUA DONG) HOAC ALARM DOI
+  // 2. KHI CUA VUA DOI TRANG THAI: GUI NGAY LAP TUC CHO CA SENSOR, HISTORY & ALERTS
   if (flagNeedPushNow) {
     flagNeedPushNow = false;
     lastSensorPush = now;
     sendSensorData();
-    delay(10);
-    return;
-  }
+    pushHistory();
+    lastHistoryPush = now;
 
-  // 3. KHI CUA DANG MO:
-  // - Gui sensor_data deu dan moi 1 giay de Firebase & Web nhan dung so giay thuc
-  // - TUYET DOI KHONG doc nguong hay ghi history de socket luon ranh va tap trung cho thoi gian thuc
-  if (isDoorOpen) {
-    if (now - lastSensorPush >= 1000) {
-      lastSensorPush = now;
-      sendSensorData();
+    // Day canh bao tuong ung len Firebase /alerts
+    if (flagDoorJustOpened) {
+      flagDoorJustOpened = false;
+      char msg[80];
+      snprintf(msg, sizeof(msg), "đang mở cửa < %lus", DOOR_DELAY_SEC);
+      pushAlert("door", "warning", msg);
     }
+    if (flagDoorBecameTooLong) {
+      flagDoorBecameTooLong = false;
+      pushAlert("door", "danger", "cần xử lý - cửa mở quá lâu");
+    }
+    if (flagDoorJustClosed) {
+      flagDoorJustClosed = false;
+      pushAlert("door", "ok", "Cửa đã đóng");
+    }
+    if (flagTempBecameHigh) {
+      flagTempBecameHigh = false;
+      char msg[80];
+      snprintf(msg, sizeof(msg), "Nhiệt độ vượt ngưỡng %.1f > %.1f°C", currentTemp, TEMP_MAX);
+      pushAlert("temp", "danger", msg);
+    }
+    if (flagTempBecameLow) {
+      flagTempBecameLow = false;
+      char msg[80];
+      snprintf(msg, sizeof(msg), "Nhiệt độ dưới ngưỡng %.1f < %.1f°C", currentTemp, TEMP_MIN);
+      pushAlert("temp", "danger", msg);
+    }
+    if (flagTempRecovered) {
+      flagTempRecovered = false;
+      char msg[80];
+      snprintf(msg, sizeof(msg), "Nhiệt độ đã trở lại an toàn (%.1f°C)", currentTemp);
+      pushAlert("temp", "ok", msg);
+    }
+
     delay(10);
     return;
   }
 
-  // 4. KHI CUA DONG (Trang thai ranh roi):
-  // - Gui heartbeat sensor_data moi 3 giay de giu song ket noi va cap nhat nhiet do
-  if (now - lastSensorPush >= 3000) {
+  // 3. GUI SENSOR_DATA REAL-TIME:
+  // - Khi cua mo: gui deu dan moi 1 giay (1000ms) de Firebase & Web nhan dung so giay thuc
+  // - Khi cua dong: gui heartbeat moi 3 giay (3000ms) de cap nhat nhiet do va giu song ket noi
+  unsigned long sensorInterval = isDoorOpen ? 1000 : 3000;
+  if (now - lastSensorPush >= sensorInterval) {
     lastSensorPush = now;
     sendSensorData();
   }
 
-  // 5. Doc nguong tu Firebase (CHI DOC KHI CUA DONG, moi 10 giay)
-  if (now - lastThresholdRead >= 10000) {
-    lastThresholdRead = now;
-    readThresholds();
-  }
-
-  // 6. Ghi lich su (CHI GHI KHI CUA DONG, dinh ky 15 giay 1 lan de khong nghen mang)
-  if (now - lastHistoryPush >= 15000) {
+  // 4. GHI LICH SU (HISTORY): CHUAN DINH KY 5 GIAY / LAN (Ke ca khi mo cua hay dong cua)
+  if (now - lastHistoryPush >= 5000) {
     lastHistoryPush = now;
     pushHistory();
+  }
+
+  // 5. DOC NGUONG TU FIREBASE: Kiem tra lien tuc moi 1.5s (Keep-Alive toc do ~30-50ms)
+  if (now - lastThresholdRead >= 1500) {
+    lastThresholdRead = now;
+    readThresholds();
   }
 
   // 7. Kiem tra ket noi WiFi
