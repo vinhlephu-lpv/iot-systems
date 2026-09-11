@@ -189,6 +189,10 @@
         if (tabName === 'history' && state.historyChart) {
             setTimeout(() => state.historyChart.resize(), 50);
         }
+        if (tabName === 'alerts') {
+            renderActiveAlerts();
+            renderAlertsTable();
+        }
     }
 
     // ─── Gauges ──────────────────────────────────────────
@@ -293,11 +297,23 @@
     }
 
     function clearAlertByKey(key) {
-        if (!state.activeAlerts.has(key)) return;
-        state.activeAlerts.delete(key);
-        const histItem = state.alertHistory.find(h => h.id === key && !h.resolvedAt);
-        if (histItem) histItem.resolvedAt = new Date();
-        updateAlertDisplays();
+        let changed = false;
+        if (state.activeAlerts.has(key)) {
+            state.activeAlerts.delete(key);
+            const histItem = state.alertHistory.find(h => h.id === key && !h.resolvedAt);
+            if (histItem) histItem.resolvedAt = new Date();
+            changed = true;
+        }
+        // Ho tro xoa ca key rut gon hoac prefix (vi du 'temp-min' se xoa 'temp-min-danger')
+        state.activeAlerts.forEach((alert, k) => {
+            if (k === key || k.startsWith(key + '-') || alert.type === key) {
+                state.activeAlerts.delete(k);
+                const histItem = state.alertHistory.find(h => h.id === k && !h.resolvedAt);
+                if (histItem) histItem.resolvedAt = new Date();
+                changed = true;
+            }
+        });
+        if (changed) updateAlertDisplays();
     }
 
     function clearAlert(type) {
@@ -423,17 +439,21 @@
     function checkThresholds(temp, humi) {
         const th = state.thresholds;
         if (temp < th.temp_min) {
+            clearAlertByKey('temp-max-danger');
             clearAlertByKey('temp-max');
-            if (!state.activeAlerts.has('temp-min')) {
+            if (!state.activeAlerts.has('temp-min-danger')) {
                 setAlert('temp-min', 'danger', `Nhiệt độ dưới ngưỡng ${temp.toFixed(1)} < ${th.temp_min}°C`);
             }
         } else if (temp > th.temp_max) {
+            clearAlertByKey('temp-min-danger');
             clearAlertByKey('temp-min');
-            if (!state.activeAlerts.has('temp-max')) {
+            if (!state.activeAlerts.has('temp-max-danger')) {
                 setAlert('temp-max', 'danger', `Nhiệt độ vượt ngưỡng ${temp.toFixed(1)} > ${th.temp_max}°C`);
             }
         } else {
+            clearAlertByKey('temp-min-danger');
             clearAlertByKey('temp-min');
+            clearAlertByKey('temp-max-danger');
             clearAlertByKey('temp-max');
         }
     }
@@ -510,6 +530,17 @@
         }
 
         checkThresholds(temp, humi);
+
+        // Khi ESP32 bao trang thai hoan toan an toan (den xanh, alarm === '0')
+        if (alarm === '0') {
+            clearAlertByKey('door-warning');
+            clearAlertByKey('door-danger');
+            if (temp >= state.thresholds.temp_min && temp <= state.thresholds.temp_max) {
+                clearAlertByKey('temp-min-danger');
+                clearAlertByKey('temp-max-danger');
+            }
+        }
+
         updateAlertSummaryItems();
 
         // Xu hướng thời gian thực trên Dashboard (chỉ hiển thị xem, không ghi lịch sử)
