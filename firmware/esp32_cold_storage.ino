@@ -101,6 +101,10 @@ HTTPClient httpHistory;
 WiFiClientSecure sslThresh;
 HTTPClient httpThresh;
 
+// Kenh 4: Chuyen gui canh bao tuc thi len Firebase /alerts
+WiFiClientSecure sslAlert;
+HTTPClient httpAlert;
+
 // ==================== HAM DOC CAM BIEN CUA MC-38 ====================
 inline bool readDoorState() {
   int pinVal = digitalRead(PIN_DOOR_MC38);
@@ -339,6 +343,8 @@ void pushHistory() {
   bool door;
   unsigned long doorSec;
   int level;
+  float tmin, tmax;
+  unsigned long delaySec;
 
   portENTER_CRITICAL(&stateMutex);
   t = currentTemp;
@@ -346,9 +352,20 @@ void pushHistory() {
   door = isDoorOpen;
   doorSec = door ? doorOpenDurationSec : 0;
   level = currentAlertLevel;
+  tmin = TEMP_MIN;
+  tmax = TEMP_MAX;
+  delaySec = DOOR_DELAY_SEC;
   portEXIT_CRITICAL(&stateMutex);
 
   String curAlarm = buildAlarmString(level);
+
+  // Xac dinh ro trang thai canh bao nhiet do tu ESP32
+  String tempAlarm = "NORMAL";
+  if (dhtReady && t > tmax) {
+    tempAlarm = "TEMP_HIGH";
+  } else if (dhtReady && t < tmin) {
+    tempAlarm = "TEMP_LOW";
+  }
 
   String json = "{";
   json += "\"temperature_c\":" + String(t, 1) + ",";
@@ -356,28 +373,30 @@ void pushHistory() {
   json += "\"door_status\":\"" + String(door ? "OPEN" : "CLOSED") + "\",";
   json += "\"door_open_sec\":" + String(doorSec) + ",";
   json += "\"alarm\":\"" + curAlarm + "\",";
+  json += "\"temp_alarm\":\"" + tempAlarm + "\",";
+  json += "\"temp_min\":" + String(tmin, 1) + ",";
+  json += "\"temp_max\":" + String(tmax, 1) + ",";
+  json += "\"door_delay_sec\":" + String(delaySec) + ",";
   json += "\"timestamp\":{\".sv\":\"timestamp\"}";
   json += "}";
 
   String url = buildFirebaseUrl(FB_PATH_HISTORY);
 
-  if (!httpHistory.connected()) {
-    httpHistory.begin(sslHistory, url);
-    httpHistory.setReuse(true);
-    httpHistory.setConnectTimeout(2500);
-    httpHistory.setTimeout(2500);
-  }
+  httpHistory.begin(sslHistory, url);
+  httpHistory.setConnectTimeout(2500);
+  httpHistory.setTimeout(2500);
   httpHistory.addHeader("Content-Type", "application/json");
 
   int code = httpHistory.POST(json);
   if (code > 0) {
     httpHistory.getString();
-    Serial.printf("[HISTORY] Ghi lich su -> HTTP %d (Temp: %.1f, Cua: %s, Sec: %lu)\n", code, t, door ? "OPEN" : "CLOSED", doorSec);
+    Serial.printf("[HISTORY] Ghi lich su -> HTTP %d (Temp: %.1f, Cua: %s, Sec: %lu, Alarm: %s, TAlarm: %s)\n",
+                  code, t, door ? "OPEN" : "CLOSED", doorSec, curAlarm.c_str(), tempAlarm.c_str());
   } else {
     Serial.printf("[HISTORY] Loi ghi lich su: %s (%d)\n", httpHistory.errorToString(code).c_str(), code);
-    httpHistory.end();
     sslHistory.stop();
   }
+  httpHistory.end();
 }
 
 // ==================== PUSH CANH BAO LEN FIREBASE (/alerts) ====================
@@ -392,21 +411,20 @@ void pushAlert(const char* type, const char* severity, const char* message) {
   json += "}";
 
   String url = buildFirebaseUrl(FB_PATH_ALERTS);
-  httpHistory.end();
-  httpHistory.begin(sslHistory, url);
-  httpHistory.setConnectTimeout(2500);
-  httpHistory.setTimeout(2500);
-  httpHistory.addHeader("Content-Type", "application/json");
+  httpAlert.begin(sslAlert, url);
+  httpAlert.setConnectTimeout(3000);
+  httpAlert.setTimeout(3000);
+  httpAlert.addHeader("Content-Type", "application/json");
 
-  int code = httpHistory.POST(json);
+  int code = httpAlert.POST(json);
   if (code > 0) {
-    httpHistory.getString();
+    httpAlert.getString();
     Serial.printf("[ALERT] Firebase POST -> %s: %s (HTTP %d)\n", severity, message, code);
   } else {
-    Serial.printf("[ALERT] Loi ghi Firebase: %s (%d)\n", httpHistory.errorToString(code).c_str(), code);
-    sslHistory.stop();
+    Serial.printf("[ALERT] Loi ghi Firebase: %s (%d)\n", httpAlert.errorToString(code).c_str(), code);
+    sslAlert.stop();
   }
-  httpHistory.end();
+  httpAlert.end();
 }
 
 // ==================== DOC NGUONG CANH BAO TU FIREBASE ====================
@@ -497,13 +515,15 @@ void setup() {
   dht.begin();
   Serial.println("[DHT22] Da khoi dong cam bien.");
 
-  // SSL Setup cho 3 kenh Keep-Alive
+  // SSL Setup cho cac kenh Keep-Alive va Alerts
   sslSensor.setInsecure();
   sslSensor.setTimeout(3);
   sslHistory.setInsecure();
   sslHistory.setTimeout(3);
   sslThresh.setInsecure();
   sslThresh.setTimeout(3);
+  sslAlert.setInsecure();
+  sslAlert.setTimeout(3);
 
   // KHOI TAO TASK PHAN CUNG REAL-TIME (FreeRTOS)
   // Uu tien cao (Priority 2) de chay ngay ca khi mang dang goi

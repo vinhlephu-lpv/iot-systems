@@ -712,18 +712,59 @@
         let html = '';
         pageData.forEach((row, i) => {
             const idx = start + i + 1;
-            const doorClass = row.door_status === 'OPEN' ? 'td-door-open' : 'td-door-closed';
-            const doorText = row.door_status === 'OPEN' ? 'Mở' : 'Đóng';
+            // Xử lý Cảnh báo nhiệt độ DỰA TRÊN DỮ LIỆU TỪ ESP32 (không so sánh động làm sai lệch lịch sử)
+            let tempAlarmClass = 'ok';
+            let tempAlarmText = 'Bình thường';
+            const tempVal = parseFloat(row.temperature_c);
+            const a = String(row.alarm || '').toUpperCase();
+            const tempAlarm = String(row.temp_alarm || '').toUpperCase();
+
+            const isHigh = (tempAlarm === 'TEMP_HIGH' || a === 'TEMP_HIGH');
+            const isLow = (tempAlarm === 'TEMP_LOW' || a === 'TEMP_LOW');
+
+            if (isHigh) {
+                tempAlarmClass = 'danger';
+                const limit = (row.temp_max !== undefined && row.temp_max !== null) ? row.temp_max : null;
+                tempAlarmText = limit !== null ? `Vượt ngưỡng (${tempVal} > ${limit}°C)` : (tempVal > state.thresholds.temp_max ? `Vượt ngưỡng (> ${state.thresholds.temp_max}°C)` : `Vượt ngưỡng`);
+            } else if (isLow) {
+                tempAlarmClass = 'danger';
+                const limit = (row.temp_min !== undefined && row.temp_min !== null) ? row.temp_min : null;
+                tempAlarmText = limit !== null ? `Dưới ngưỡng (${tempVal} < ${limit}°C)` : (tempVal < state.thresholds.temp_min ? `Dưới ngưỡng (< ${state.thresholds.temp_min}°C)` : `Dưới ngưỡng`);
+            } else {
+                tempAlarmClass = 'ok';
+                tempAlarmText = 'Bình thường';
+            }
+
+            // Xử lý Trạng thái cửa & Cảnh báo mở lâu DỰA TRÊN DỮ LIỆU TỪ ESP32
+            let doorBadgeClass = 'ok';
+            let doorText = 'Đóng';
+            const doorSec = row.door_open_sec !== undefined ? Number(row.door_open_sec) : 0;
+            const doorLimit = (row.door_delay_sec !== undefined && row.door_delay_sec !== null) ? row.door_delay_sec : (th.door_delay_sec || 10);
+
+            if (row.door_status === 'OPEN') {
+                if (doorSec >= doorLimit || a === 'DOOR_OPEN_LONG' || a === '2') {
+                    doorBadgeClass = 'danger';
+                    doorText = `Cần xử lý - cửa mở quá lâu (${doorSec}s)`;
+                } else {
+                    doorBadgeClass = 'warning';
+                    doorText = `Đang mở cửa (< ${doorLimit}s)`;
+                }
+            } else {
+                doorBadgeClass = 'ok';
+                doorText = 'Đóng';
+            }
+
             html += `
                 <tr>
                     <td>${idx}</td>
                     <td>${formatTime(row.timestamp)}</td>
                     <td class="td-temp">${row.temperature_c.toFixed(1)}</td>
+                    <td><span class="severity-badge ${tempAlarmClass}">${tempAlarmText}</span></td>
                     <td class="td-humi">${row.humidity.toFixed(1)}</td>
-                    <td class="${doorClass}">${doorText}</td>
+                    <td><span class="severity-badge ${doorBadgeClass}">${doorText}</span></td>
                 </tr>`;
         });
-        dom.historyTableBody.innerHTML = html || '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">Chua co du lieu</td></tr>';
+        dom.historyTableBody.innerHTML = html || '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">Chưa có dữ liệu</td></tr>';
 
         renderPagination(dom.historyPagination, state.historyPage, totalPages, (p) => {
             state.historyPage = p;
@@ -848,6 +889,7 @@
                     { header: 'STT', key: 'stt', width: 8 },
                     { header: 'Thời gian', key: 'time', width: 22 },
                     { header: 'Nhiệt độ (°C)', key: 'temp', width: 16 },
+                    { header: 'Cảnh báo nhiệt độ', key: 'temp_alarm', width: 24 },
                     { header: 'Độ ẩm (%)', key: 'humi', width: 16 },
                     { header: 'Trạng thái cửa', key: 'door', width: 18 },
                     { header: 'Thời gian mở (s)', key: 'door_sec', width: 18 },
@@ -869,8 +911,22 @@
                     // Cửa đã ĐÓNG thì thời gian mở bắt buộc là 0 giây
                     const doorSec = isDoorOpen ? (parseInt(row.door_open_sec) || 0) : 0;
 
-                    let alarmStr = 'Bình thường';
+                    const tempVal = parseFloat(row.temperature_c);
                     const a = String(row.alarm || '0').toUpperCase();
+                    const tempAlarm = String(row.temp_alarm || '').toUpperCase();
+                    const isHigh = (tempAlarm === 'TEMP_HIGH' || a === 'TEMP_HIGH');
+                    const isLow = (tempAlarm === 'TEMP_LOW' || a === 'TEMP_LOW');
+
+                    let tempAlarmStr = 'Bình thường';
+                    if (isHigh) {
+                        const limit = (row.temp_max !== undefined && row.temp_max !== null) ? row.temp_max : state.thresholds.temp_max;
+                        tempAlarmStr = `Vượt ngưỡng (${tempVal} > ${limit}°C)`;
+                    } else if (isLow) {
+                        const limit = (row.temp_min !== undefined && row.temp_min !== null) ? row.temp_min : state.thresholds.temp_min;
+                        tempAlarmStr = `Dưới ngưỡng (${tempVal} < ${limit}°C)`;
+                    }
+
+                    let alarmStr = 'Bình thường';
                     const isTempAlert = a.includes('TEMP') || a.includes('HIGH') || a.includes('LOW');
                     const isDoorLong = a.includes('LONG') || (isDoorOpen && doorSec >= (state.thresholds.door_delay_sec || 10));
 
@@ -886,18 +942,25 @@
                         stt: i + 1,
                         time: formatExcelDate(row.timestamp),
                         temp: formatExcelNum(row.temperature_c),
+                        temp_alarm: tempAlarmStr,
                         humi: formatExcelNum(row.humidity),
                         door: doorText,
                         door_sec: doorSec,
                         alarm: alarmStr
                     });
 
+                    // Set red color for temp alarm if violated
+                    const tempAlarmCell = newRow.getCell(4);
+                    if (tempAlarmStr !== 'Bình thường') {
+                        tempAlarmCell.font = { color: { argb: 'FFFF0000' }, bold: true };
+                    }
+
                     // Set red color for door status (OPEN and CLOSED)
-                    const doorCell = newRow.getCell(5);
+                    const doorCell = newRow.getCell(6);
                     doorCell.font = { color: { argb: 'FFFF0000' }, bold: true };
 
                     // Set red color for Alarm status
-                    const alarmCell = newRow.getCell(7);
+                    const alarmCell = newRow.getCell(8);
                     alarmCell.font = { color: { argb: 'FFFF0000' }, bold: true };
                 });
 
@@ -911,8 +974,22 @@
                     const isDoorOpen = (row.door_status === 'OPEN');
                     const doorText = isDoorOpen ? 'Mở' : 'Đóng';
                     const doorSec = isDoorOpen ? (parseInt(row.door_open_sec) || 0) : 0;
-                    let alarmStr = 'Bình thường';
+                    const tempVal = parseFloat(row.temperature_c);
                     const a = String(row.alarm || '0').toUpperCase();
+                    const tempAlarm = String(row.temp_alarm || '').toUpperCase();
+                    const isHigh = (tempAlarm === 'TEMP_HIGH' || a === 'TEMP_HIGH');
+                    const isLow = (tempAlarm === 'TEMP_LOW' || a === 'TEMP_LOW');
+
+                    let tempAlarmStr = 'Bình thường';
+                    if (isHigh) {
+                        const limit = (row.temp_max !== undefined && row.temp_max !== null) ? row.temp_max : state.thresholds.temp_max;
+                        tempAlarmStr = `Vượt ngưỡng (${tempVal} > ${limit}°C)`;
+                    } else if (isLow) {
+                        const limit = (row.temp_min !== undefined && row.temp_min !== null) ? row.temp_min : state.thresholds.temp_min;
+                        tempAlarmStr = `Dưới ngưỡng (${tempVal} < ${limit}°C)`;
+                    }
+
+                    let alarmStr = 'Bình thường';
                     if (a === '2' || (isDoorOpen && doorSec >= (state.thresholds.door_delay_sec || 10))) {
                         alarmStr = 'Cần xử lý';
                     } else if (isDoorOpen) {
@@ -922,6 +999,7 @@
                         'STT': i + 1,
                         'Thời gian': formatExcelDate(row.timestamp),
                         'Nhiệt độ (°C)': formatExcelNum(row.temperature_c),
+                        'Cảnh báo nhiệt độ': tempAlarmStr,
                         'Độ ẩm (%)': formatExcelNum(row.humidity),
                         'Trạng thái cửa': doorText,
                         'Thời gian mở (s)': doorSec,
@@ -1119,7 +1197,11 @@
                     humidity: parseFloat(data.humidity) || 0,
                     door_status: data.door_status || 'CLOSED',
                     door_open_sec: parseInt(data.door_open_sec) || 0,
-                    alarm: data.alarm || 'NONE'
+                    alarm: data.alarm || 'NONE',
+                    temp_alarm: data.temp_alarm || (data.alarm === 'TEMP_HIGH' ? 'TEMP_HIGH' : data.alarm === 'TEMP_LOW' ? 'TEMP_LOW' : 'NORMAL'),
+                    temp_min: data.temp_min !== undefined && data.temp_min !== null ? parseFloat(data.temp_min) : null,
+                    temp_max: data.temp_max !== undefined && data.temp_max !== null ? parseFloat(data.temp_max) : null,
+                    door_delay_sec: data.door_delay_sec !== undefined && data.door_delay_sec !== null ? parseInt(data.door_delay_sec) : null
                 };
 
                 // Tranh trung lap bang Firebase unique key

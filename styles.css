@@ -842,6 +842,11 @@ body {
     letter-spacing: 0.03em;
 }
 
+.severity-badge.ok {
+    background: var(--accent-emerald-dim);
+    color: var(--accent-emerald);
+}
+
 .severity-badge.warning {
     background: var(--accent-amber-dim);
     color: var(--accent-amber);
