@@ -739,7 +739,7 @@
         const end = Math.min(start + state.rowsPerPage, total);
         const pageData = state.historyData.slice(start, end);
 
-        dom.recordCount.textContent = `${total} ban ghi`;
+        dom.recordCount.textContent = `${total} bản ghi`;
 
         let html = '';
         pageData.forEach((row, i) => {
@@ -812,7 +812,7 @@
         const end = Math.min(start + state.rowsPerPage, total);
         const pageData = state.alertHistory.slice(start, end);
 
-        dom.alertRecordCount.textContent = `${total} ban ghi`;
+        dom.alertRecordCount.textContent = `${total} bản ghi`;
 
         let html = '';
         pageData.forEach((row, i) => {
@@ -1168,10 +1168,10 @@
             firebase.initializeApp(FIREBASE_CONFIG);
             state.db = firebase.database();
             state.firebaseReady = true;
-            console.log('Firebase da khoi tao thanh cong');
+            console.log('Firebase đã khởi tạo thành công');
             setupFirebaseListeners();
         } catch (err) {
-            console.error('Loi khoi tao Firebase:', err);
+            console.error('Lỗi khởi tạo Firebase:', err);
             showToast('Lỗi kết nối Firebase, chạy mô phỏng', 'error');
             startSimulation();
         }
@@ -1366,7 +1366,7 @@
             state.historyPage = 1;
             renderHistoryTable();
             updateHistoryChart();
-            showToast('Da xoa lich su do luong', 'info');
+            showToast('Đã xóa lịch sử đo lường', 'info');
         });
         dom.clearAlertsBtn.addEventListener('click', () => {
             state.alertHistory = [];

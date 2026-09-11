@@ -189,7 +189,7 @@
                             <path d="M9 3v18"/>
                             <circle cx="7" cy="12" r="0.5" fill="currentColor"/>
                         </svg>
-                        <span class="card-label">Trạng thái cua</span>
+                        <span class="card-label">Trạng thái cửa</span>
                     </div>
                     <div class="door-status-display">
                         <div class="door-visual" id="doorVisual">
@@ -205,9 +205,9 @@
                             </svg>
                         </div>
                         <div class="door-info">
-                            <span class="door-label" id="doorLabel">DONG</span>
+                            <span class="door-label" id="doorLabel">ĐANG ĐÓNG</span>
                             <div class="door-timer-section" id="doorTimerSection" style="display:none;">
-                                <span class="timer-label">Thời gian mo</span>
+                                <span class="timer-label">Thời gian mở</span>
                                 <span class="door-timer" id="doorTimer">00:00:00</span>
                             </div>
                         </div>
@@ -251,7 +251,7 @@
                         <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
                         <polyline points="17 6 23 6 23 12"/>
                     </svg>
-                    <span class="card-label">Xu huong (5 phut gan nhat)</span>
+                    <span class="card-label">Xu hướng (5 phút gần nhất)</span>
                 </div>
                 <div class="chart-wrapper mini-chart">
                     <canvas id="miniTrendChart"></canvas>
@@ -263,7 +263,7 @@
         <section class="tab-content" id="tab-history">
             <div class="page-header">
                 <div>
-                    <h1 class="page-title">Lịch sử do luong</h1>
+                    <h1 class="page-title">Lịch sử đo lường</h1>
                     <p class="page-subtitle">Dữ liệu nhiệt độ & độ ẩm mỗi 5 giây</p>
                 </div>
                 <button class="btn btn-primary" id="exportExcelBtn">
@@ -297,10 +297,10 @@
 
             <div class="card table-card">
                 <div class="card-header">
-                    <span class="card-label">Bang du lieu</span>
+                    <span class="card-label">Bảng dữ liệu</span>
                     <div class="table-controls">
-                        <span class="record-count" id="recordCount">0 ban ghi</span>
-                        <button class="btn btn-ghost btn-sm" id="clearHistoryBtn">Xoa tat ca</button>
+                        <span class="record-count" id="recordCount">0 bản ghi</span>
+                        <button class="btn btn-ghost btn-sm" id="clearHistoryBtn">Xóa tất cả</button>
                     </div>
                 </div>
                 <div class="table-wrapper">
@@ -335,7 +335,7 @@
 
             <!-- Active Alerts -->
             <div class="active-alerts-section">
-                <h2 class="section-title">Cảnh báo dang hoat dong</h2>
+                <h2 class="section-title">Cảnh báo đang hoạt động</h2>
                 <div class="active-alerts-grid" id="activeAlertsGrid">
                     <div class="empty-state" id="noActiveAlerts">
                         <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -352,8 +352,8 @@
                 <div class="card-header">
                     <span class="card-label">Lịch sử cảnh báo</span>
                     <div class="table-controls">
-                        <span class="record-count" id="alertRecordCount">0 ban ghi</span>
-                        <button class="btn btn-ghost btn-sm" id="clearAlertsBtn">Xoa tat ca</button>
+                        <span class="record-count" id="alertRecordCount">0 bản ghi</span>
+                        <button class="btn btn-ghost btn-sm" id="clearAlertsBtn">Xóa tất cả</button>
                     </div>
                 </div>
                 <div class="table-wrapper">
@@ -362,9 +362,9 @@
                             <tr>
                                 <th>#</th>
                                 <th>Thời gian</th>
-                                <th>Loai</th>
-                                <th>Muc do</th>
-                                <th>Chi tiet</th>
+                                <th>Loại</th>
+                                <th>Mức độ</th>
+                                <th>Chi tiết</th>
                             </tr>
                         </thead>
                         <tbody id="alertsTableBody">
@@ -381,7 +381,7 @@
             <div class="page-header">
                 <div>
                     <h1 class="page-title">Điều khiển</h1>
-                    <p class="page-subtitle">Cài đặt ngưỡng cảnh báo he thong</p>
+                    <p class="page-subtitle">Cài đặt ngưỡng cảnh báo hệ thống</p>
                 </div>
             </div>
 
@@ -803,15 +803,15 @@
                                     <span class="code-title">1. Khởi tạo tác vụ phần cứng độc lập (FreeRTOS Dual-Core Task)</span>
                                     <span class="code-lang">C++ / FreeRTOS</span>
                                 </div>
-                                <pre class="code-content"><code>// Khoi tao tac vu phan cung rieng biet tren Core 1 voi do uu tien cao
+                                <pre class="code-content"><code>// Khởi tạo tác vụ phần cứng riêng biệt trên Core 1 với độ ưu tiên cao
 xTaskCreatePinnedToCore(
-    hardwareAlarmTask,   // Ham thuc thi tac vu
-    "HwAlarmTask",       // Ten dinh danh tac vu
-    4096,                // Dung luong Stack (bytes)
-    NULL,                // Tham so truyen vao
-    2,                   // Muc uu tien cao (Priority 2)
-    &alarmTaskHandle,    // Con tro quan ly tac vu
-    1                    // Co dinh chay tren Core 1 (Core 0 danh cho WiFi/TCP)
+    hardwareAlarmTask,   // Hàm thực thi tác vụ
+    "HwAlarmTask",       // Tên định danh tác vụ
+    4096,                // Dung lượng Stack (bytes)
+    NULL,                // Tham số truyền vào
+    2,                   // Mức ưu tiên cao (Priority 2)
+    &alarmTaskHandle,    // Con trỏ quản lý tác vụ
+    1                    // Cố định chạy trên Core 1 (Core 0 dành cho WiFi/TCP)
 );</code></pre>
                             </div>
 
@@ -820,12 +820,12 @@ xTaskCreatePinnedToCore(
                                     <span class="code-title">2. Máy trạng thái giám sát chu kỳ 20ms và kích hoạt cảnh báo tức thì</span>
                                     <span class="code-lang">C++ / State Machine</span>
                                 </div>
-                                <pre class="code-content"><code>// Kiem tra phan cung dinh ky 20ms, phan hoi ngay lap tuc khong tre mang
+                                <pre class="code-content"><code>// Kiểm tra phần cứng định kỳ 20ms, phản hồi ngay lập tức không trễ mạng
 void hardwareAlarmTask(void* pvParameters) {
     for (;;) {
         portENTER_CRITICAL(&stateMutex);
 
-        // Doc trang thai cam bien tu MC-38 va tinh toan thoi gian mo
+        // Đọc trạng thái cảm biến từ MC-38 và tính toán thời gian mở
         bool doorNow = (digitalRead(PIN_DOOR_MC38) == (IS_MC38_NC ? HIGH : LOW));
         if (doorNow) {
             if (!isDoorOpen) doorOpenStartTime = millis();
@@ -835,15 +835,15 @@ void hardwareAlarmTask(void* pvParameters) {
         }
         isDoorOpen = doorNow;
 
-        // Danh gia vi pham nguong va xac dinh cap do canh bao
+        // Đánh giá vi phạm ngưỡng và xác định cấp độ cảnh báo
         bool isTempAlert  = dhtReady && (currentTemp < TEMP_MIN || currentTemp > TEMP_MAX);
         bool isDoorTooLong = isDoorOpen && (doorOpenDurationSec >= DOOR_DELAY_SEC);
 
         int targetLevel = (isTempAlert || isDoorTooLong) ? 2 : (isDoorOpen ? 1 : 0);
-        updateOutputs(targetLevel); // Cap nhat LED va Coi truc tiep qua GPIO
+        updateOutputs(targetLevel); // Cập nhật LED và Còi trực tiếp qua GPIO
 
         portEXIT_CRITICAL(&stateMutex);
-        vTaskDelay(pdMS_TO_TICKS(20)); // Chu ky quet 20ms
+        vTaskDelay(pdMS_TO_TICKS(20)); // Chu kỳ quét 20ms
     }
 }</code></pre>
                             </div>
@@ -853,7 +853,7 @@ void hardwareAlarmTask(void* pvParameters) {
                                     <span class="code-title">3. Đồng bộ ngưỡng động hai chiều từ Firebase REST API</span>
                                     <span class="code-lang">C++ / HTTPClient</span>
                                 </div>
-                                <pre class="code-content"><code>// Nhan va cap nhat nguong moi tu Firebase Realtime Database
+                                <pre class="code-content"><code>// Nhận và cập nhật ngưỡng mới từ Firebase Realtime Database
 void fetchThresholds() {
     HTTPClient http;
     http.begin(buildFirebaseUrl(FB_PATH_THRESHOLDS));
