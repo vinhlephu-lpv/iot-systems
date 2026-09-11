@@ -517,13 +517,13 @@ void setup() {
 
   // SSL Setup cho cac kenh Keep-Alive va Alerts
   sslSensor.setInsecure();
-  sslSensor.setTimeout(3);
+  sslSensor.setTimeout(3000);
   sslHistory.setInsecure();
-  sslHistory.setTimeout(3);
+  sslHistory.setTimeout(3000);
   sslThresh.setInsecure();
-  sslThresh.setTimeout(3);
+  sslThresh.setTimeout(3000);
   sslAlert.setInsecure();
-  sslAlert.setTimeout(3);
+  sslAlert.setTimeout(3000);
 
   // KHOI TAO TASK PHAN CUNG REAL-TIME (FreeRTOS)
   // Uu tien cao (Priority 2) de chay ngay ca khi mang dang goi
@@ -597,24 +597,20 @@ void loop() {
     }
   }
 
-  // 2. KHI CUA VUA DOI TRANG THAI: GUI NGAY LAP TUC CHO CA SENSOR, HISTORY & ALERTS
+  // 2. KHI CUA HOAC NHIET DO DOI TRANG THAI: GUI NGAY LAP TUC ALERTS, SENSOR & HISTORY
   if (flagNeedPushNow) {
     flagNeedPushNow = false;
-    lastSensorPush = now;
-    sendSensorData();
-    pushHistory();
-    lastHistoryPush = now;
 
-    // Day canh bao tuong ung len Firebase /alerts
+    // A. Day canh bao tuong ung len Firebase /alerts NGAY LAP TUC (Uu tien so 1, khong tre)
+    if (flagDoorBecameTooLong) {
+      flagDoorBecameTooLong = false;
+      pushAlert("door", "danger", "cần xử lý - cửa mở quá lâu");
+    }
     if (flagDoorJustOpened) {
       flagDoorJustOpened = false;
       char msg[80];
       snprintf(msg, sizeof(msg), "đang mở cửa < %lus", DOOR_DELAY_SEC);
       pushAlert("door", "warning", msg);
-    }
-    if (flagDoorBecameTooLong) {
-      flagDoorBecameTooLong = false;
-      pushAlert("door", "danger", "cần xử lý - cửa mở quá lâu");
     }
     if (flagDoorJustClosed) {
       flagDoorJustClosed = false;
@@ -638,6 +634,12 @@ void loop() {
       snprintf(msg, sizeof(msg), "Nhiệt độ đã trở lại an toàn (%.1f°C)", currentTemp);
       pushAlert("temp", "ok", msg);
     }
+
+    // B. Sau do moi cap nhat sensor_data va pushHistory
+    lastSensorPush = now;
+    sendSensorData();
+    pushHistory();
+    lastHistoryPush = now;
 
     delay(10);
     return;

@@ -276,7 +276,9 @@
         };
         state.activeAlerts.set(key, alert);
 
-        if (!state.firebaseReady) {
+        // Ghi nhận ngay vào alertHistory để tab Cảnh báo hiển thị thời gian thực (không bị trễ)
+        const isDuplicate = state.alertHistory.some(a => (a.id === key && !a.resolvedAt) || (Math.abs(a.timestamp.getTime() - alert.timestamp.getTime()) < 2000 && a.message === alert.message));
+        if (!isDuplicate) {
             state.alertHistory.unshift({
                 ...alert,
                 resolvedAt: null
@@ -366,7 +368,8 @@
         let doorText = 'Đang đóng';
         const doorLimit = state.thresholds.door_delay_sec || 10;
         if (state.doorOpen) {
-            if (state.doorOpenSec >= doorLimit) {
+            const isDanger = (state.doorOpenSec >= doorLimit || state.activeAlerts.has('door-danger') || state.espAlarm === 'DOOR_OPEN_LONG' || state.espAlarm === '2');
+            if (isDanger) {
                 doorStatus = 'danger';
                 doorText = 'cần xử lý - cửa mở quá lâu';
             } else {
@@ -445,6 +448,7 @@
         const sensorId = data.sensor_id || '---';
         const isOpen = (doorStatus === 'OPEN');
         const effectiveDoorSec = isOpen ? (parseInt(doorOpenSec, 10) || 0) : 0;
+        state.doorOpenSec = effectiveDoorSec;
         state.espAlarm = alarm;
 
         // Cập nhật giá trị hiển thị Nhiệt độ & Đồng hồ đo (Gauges)
