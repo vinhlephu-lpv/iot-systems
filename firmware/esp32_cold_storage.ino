@@ -103,10 +103,6 @@ HTTPClient httpHistory;
 WiFiClientSecure sslThresh;
 HTTPClient httpThresh;
 
-// Kenh 4: Chuyen gui canh bao tuc thi len Firebase /alerts
-WiFiClientSecure sslAlert;
-HTTPClient httpAlert;
-
 // ==================== HAM DOC CAM BIEN CUA MC-38 ====================
 inline bool readDoorState() {
   int pinVal = digitalRead(PIN_DOOR_MC38);
@@ -406,29 +402,20 @@ void pushAlert(const char* type, const char* severity, const char* message) {
 
   String url = buildFirebaseUrl(FB_PATH_ALERTS);
 
-  for (int attempt = 0; attempt < 2; attempt++) {
-    sslAlert.stop(); // Luon ngat ket noi cu tranh socket dead/stale do Firebase ngat idle sau 60s
-    httpAlert.end();
+  httpHistory.begin(sslHistory, url);
+  httpHistory.setConnectTimeout(3000);
+  httpHistory.setTimeout(3000);
+  httpHistory.addHeader("Content-Type", "application/json");
 
-    httpAlert.begin(sslAlert, url);
-    httpAlert.setConnectTimeout(5000); // 5s timeout cho handshake TLS
-    httpAlert.setTimeout(5000);
-    httpAlert.addHeader("Content-Type", "application/json");
-
-    int code = httpAlert.POST(json);
-    if (code > 0) {
-      httpAlert.getString();
-      Serial.printf("[ALERT] Firebase POST thanh cong -> %s: %s (HTTP %d)\n", severity, message, code);
-      httpAlert.end();
-      sslAlert.stop(); // Giai phong RAM va socket ngay lap tuc sau khi gui thanh cong
-      return;
-    } else {
-      Serial.printf("[ALERT] Loi lan %d ghi Firebase: %s (%d)\n", attempt + 1, httpAlert.errorToString(code).c_str(), code);
-      httpAlert.end();
-      sslAlert.stop();
-      delay(200);
-    }
+  int code = httpHistory.POST(json);
+  if (code > 0) {
+    httpHistory.getString();
+    Serial.printf("[ALERT] Firebase POST thanh cong -> %s: %s (HTTP %d)\n", severity, message, code);
+  } else {
+    Serial.printf("[ALERT] Loi ghi Firebase: %s (%d)\n", httpHistory.errorToString(code).c_str(), code);
+    sslHistory.stop();
   }
+  httpHistory.end();
 }
 
 // ==================== DOC NGUONG CANH BAO TU FIREBASE ====================
@@ -546,8 +533,6 @@ void setup() {
   sslHistory.setTimeout(3000);
   sslThresh.setInsecure();
   sslThresh.setTimeout(3000);
-  sslAlert.setInsecure();
-  sslAlert.setTimeout(3000);
 
   // KHOI TAO TASK PHAN CUNG REAL-TIME (FreeRTOS)
   // Uu tien cao (Priority 2) de chay ngay ca khi mang dang goi
