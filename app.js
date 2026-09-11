@@ -1222,7 +1222,7 @@
         });
 
         // Doc lich su tu Firebase (gioi han 200 ban ghi gan nhat)
-        db.ref(DB_PATHS.history).orderByChild('timestamp').limitToLast(200).on('child_added', (snapshot) => {
+        db.ref(DB_PATHS.history).limitToLast(200).on('child_added', (snapshot) => {
             const data = snapshot.val();
             if (data && data.temperature_c !== undefined) {
                 const record = {
@@ -1255,7 +1255,7 @@
         });
 
         // Doc lich su canh bao tu Firebase (bao toan day du khi F5, toi da 200 ban ghi gan nhat)
-        db.ref(DB_PATHS.alerts).orderByChild('timestamp').limitToLast(200).on('child_added', (snapshot) => {
+        db.ref(DB_PATHS.alerts).limitToLast(200).on('child_added', (snapshot) => {
             const data = snapshot.val();
             if (data && data.message) {
                 const record = {
