@@ -280,16 +280,18 @@
         };
         state.activeAlerts.set(key, alert);
 
-        // Ghi nhận ngay vào alertHistory để tab Cảnh báo hiển thị thời gian thực (không bị trễ)
-        const isDuplicate = state.alertHistory.some(a => (a.id === key && !a.resolvedAt) || (Math.abs(a.timestamp.getTime() - alert.timestamp.getTime()) < 2000 && a.message === alert.message));
-        if (!isDuplicate) {
-            state.alertHistory.unshift({
-                ...alert,
-                resolvedAt: null
-            });
+        // Chỉ thêm cục bộ vào alertHistory khi không có Firebase (khi có Firebase, toàn bộ log chuẩn xác đến từ Firebase /alerts của ESP32 để không bao giờ bị mất khi F5)
+        if (!state.firebaseReady) {
+            const isDuplicate = state.alertHistory.some(a => (a.id === key && !a.resolvedAt) || (Math.abs(a.timestamp.getTime() - alert.timestamp.getTime()) < 2000 && a.message === alert.message));
+            if (!isDuplicate) {
+                state.alertHistory.unshift({
+                    ...alert,
+                    resolvedAt: null
+                });
 
-            if (state.alertHistory.length > 500) {
-                state.alertHistory.pop();
+                if (state.alertHistory.length > 500) {
+                    state.alertHistory.pop();
+                }
             }
         }
 

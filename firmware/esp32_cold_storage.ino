@@ -405,20 +405,30 @@ void pushAlert(const char* type, const char* severity, const char* message) {
   json += "}";
 
   String url = buildFirebaseUrl(FB_PATH_ALERTS);
-  httpAlert.begin(sslAlert, url);
-  httpAlert.setConnectTimeout(3000);
-  httpAlert.setTimeout(3000);
-  httpAlert.addHeader("Content-Type", "application/json");
 
-  int code = httpAlert.POST(json);
-  if (code > 0) {
-    httpAlert.getString();
-    Serial.printf("[ALERT] Firebase POST -> %s: %s (HTTP %d)\n", severity, message, code);
-  } else {
-    Serial.printf("[ALERT] Loi ghi Firebase: %s (%d)\n", httpAlert.errorToString(code).c_str(), code);
-    sslAlert.stop();
+  for (int attempt = 0; attempt < 2; attempt++) {
+    sslAlert.stop(); // Luon ngat ket noi cu tranh socket dead/stale do Firebase ngat idle sau 60s
+    httpAlert.end();
+
+    httpAlert.begin(sslAlert, url);
+    httpAlert.setConnectTimeout(5000); // 5s timeout cho handshake TLS
+    httpAlert.setTimeout(5000);
+    httpAlert.addHeader("Content-Type", "application/json");
+
+    int code = httpAlert.POST(json);
+    if (code > 0) {
+      httpAlert.getString();
+      Serial.printf("[ALERT] Firebase POST thanh cong -> %s: %s (HTTP %d)\n", severity, message, code);
+      httpAlert.end();
+      sslAlert.stop(); // Giai phong RAM va socket ngay lap tuc sau khi gui thanh cong
+      return;
+    } else {
+      Serial.printf("[ALERT] Loi lan %d ghi Firebase: %s (%d)\n", attempt + 1, httpAlert.errorToString(code).c_str(), code);
+      httpAlert.end();
+      sslAlert.stop();
+      delay(200);
+    }
   }
-  httpAlert.end();
 }
 
 // ==================== DOC NGUONG CANH BAO TU FIREBASE ====================
@@ -468,6 +478,17 @@ void readThresholds() {
           lastTempHigh = false;
           lastTempLow = false;
           flagTempRecovered = true;
+        }
+
+        // Kiem tra neu nguong moi lam nhiet do hien tai vuot/duoi nguong
+        if (dhtReady && currentTemp < TEMP_MIN && !lastTempLow) {
+          lastTempLow = true;
+          lastTempHigh = false;
+          flagTempBecameLow = true;
+        } else if (dhtReady && currentTemp > TEMP_MAX && !lastTempHigh) {
+          lastTempHigh = true;
+          lastTempLow = false;
+          flagTempBecameHigh = true;
         }
 
         if (isTempAlert || isDoorTooLong) {
