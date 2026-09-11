@@ -1752,3 +1752,118 @@ body {
 .number-with-slider { width: 80px; }
 
 .brand-logo { width: 36px; height: 36px; object-fit: contain; flex-shrink: 0; }
+
+/* Hardware Specifications & Code Showcase */
+.hw-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.hw-table td {
+    vertical-align: middle;
+    line-height: 1.5;
+}
+
+.hw-table code {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.85rem;
+    color: var(--accent-blue);
+    background: rgba(37, 99, 235, 0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.pin-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-family: var(--font-mono, monospace);
+    border-radius: 4px;
+    background: rgba(37, 99, 235, 0.1);
+    color: var(--accent-blue);
+    border: 1px solid rgba(37, 99, 235, 0.25);
+    margin: 2px 0;
+}
+
+.pin-badge.vcc {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--accent-red);
+    border-color: rgba(239, 68, 68, 0.25);
+}
+
+.pin-badge.gnd {
+    background: rgba(100, 116, 139, 0.1);
+    color: var(--text-muted);
+    border-color: rgba(100, 116, 139, 0.25);
+}
+
+.hw-subheading {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 28px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.code-showcase-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 14px;
+}
+
+.code-card {
+    background: #0f172a;
+    border-radius: var(--radius);
+    border: 1px solid #1e293b;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.code-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+}
+
+.code-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+.code-lang {
+    font-size: 0.72rem;
+    font-family: monospace;
+    font-weight: 600;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.12);
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+.code-content {
+    margin: 0;
+    padding: 14px 18px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.83rem;
+    line-height: 1.6;
+    color: #94a3b8;
+    background: #0f172a;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.code-content code {
+    color: inherit;
+    font-family: inherit;
+    background: none;
+    padding: 0;
+}

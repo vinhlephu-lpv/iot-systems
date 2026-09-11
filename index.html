@@ -646,6 +646,169 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Hardware Specifications & Pinout -->
+                <div class="card about-card">
+                    <div class="about-section-title">
+                        <svg class="about-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="4" y="4" width="16" height="16" rx="2"/>
+                            <rect x="9" y="9" width="6" height="6"/>
+                            <line x1="9" y1="1" x2="9" y2="4"/>
+                            <line x1="15" y1="1" x2="15" y2="4"/>
+                            <line x1="9" y1="20" x2="9" y2="23"/>
+                            <line x1="15" y1="20" x2="15" y2="23"/>
+                            <line x1="20" y1="9" x2="23" y2="9"/>
+                            <line x1="20" y1="14" x2="23" y2="14"/>
+                            <line x1="1" y1="9" x2="4" y2="9"/>
+                            <line x1="1" y1="14" x2="4" y2="14"/>
+                        </svg>
+                        <h3>Thông số phần cứng, Sơ đồ đấu nối & Kiến trúc mã nguồn</h3>
+                    </div>
+                    <div class="about-body">
+                        <p>Chi tiết danh mục linh kiện, mã cảm biến, thông số kỹ thuật và sơ đồ phân bổ chân GPIO trên vi điều khiển ESP32 Dev Module (WROOM-32):</p>
+                        
+                        <div class="table-wrapper" style="margin-bottom: 24px; overflow-x: auto;">
+                            <table class="data-table hw-table">
+                                <thead>
+                                    <tr>
+                                        <th>Thành phần</th>
+                                        <th>Mã thiết bị / Cảm biến</th>
+                                        <th>Thông số kỹ thuật</th>
+                                        <th>Chân kết nối ESP32</th>
+                                        <th>Nguyên lý & Chế độ hoạt động</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Cảm biến nhiệt ẩm</strong></td>
+                                        <td><code>DHT22 (AM2302)</code></td>
+                                        <td>Nhiệt độ: -40°C ~ +80°C (±0.5°C)<br>Độ ẩm: 0% ~ 100% RH (±2% RH)</td>
+                                        <td><span class="pin-badge">GPIO 4</span> (DATA)<br><span class="pin-badge vcc">3.3V</span> | <span class="pin-badge gnd">GND</span></td>
+                                        <td>Chuẩn giao tiếp 1-Wire Digital Bus, chu kỳ đọc 2 giây</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Cảm biến cửa</strong></td>
+                                        <td><code>MC-38 (Magnetic)</code></td>
+                                        <td>Công tắc từ tính loại Thường đóng (NC)<br>Khoảng cách đóng ngắt: 15 - 25 mm</td>
+                                        <td><span class="pin-badge">GPIO 18</span> (Signal)<br><span class="pin-badge gnd">GND</span></td>
+                                        <td>INPUT_PULLUP nội bộ<br>(Cửa đóng: LOW | Cửa mở: HIGH)</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>LED Xanh lá</strong></td>
+                                        <td>LED 5mm (Green)</td>
+                                        <td>V<sub>f</sub> = 2.0 - 2.2V, I<sub>max</sub> = 20mA</td>
+                                        <td><span class="pin-badge">GPIO 25</span> (Trở hạn dòng 330Ω)</td>
+                                        <td>OUTPUT (Mức cao = Sáng): Trạng thái an toàn, bình thường</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>LED Vàng</strong></td>
+                                        <td>LED 5mm (Yellow)</td>
+                                        <td>V<sub>f</sub> = 2.0 - 2.2V, I<sub>max</sub> = 20mA</td>
+                                        <td><span class="pin-badge">GPIO 33</span> (Trở hạn dòng 330Ω)</td>
+                                        <td>OUTPUT (Mức cao = Sáng): Cửa đang mở trong ngưỡng cài đặt</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>LED Đỏ</strong></td>
+                                        <td>LED 5mm (Red)</td>
+                                        <td>V<sub>f</sub> = 1.8 - 2.0V, I<sub>max</sub> = 20mA</td>
+                                        <td><span class="pin-badge">GPIO 32</span> (Trở hạn dòng 330Ω)</td>
+                                        <td>OUTPUT (Mức cao = Sáng): Cảnh báo khẩn cấp (Cần xử lý)</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Còi báo (Buzzer)</strong></td>
+                                        <td>Active Buzzer 5V</td>
+                                        <td>Âm lượng ~85dB, tần số 2.5kHz</td>
+                                        <td><span class="pin-badge">GPIO 16</span></td>
+                                        <td>OUTPUT (Kêu song song cùng LED Đỏ khi có vi phạm)</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>LED Onboard</strong></td>
+                                        <td>SMD Blue LED</td>
+                                        <td>Tích hợp sẵn trên bo mạch ESP32</td>
+                                        <td><span class="pin-badge">GPIO 2</span></td>
+                                        <td>OUTPUT: Báo trạng thái kết nối mạng WiFi & Firebase</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <h4 class="hw-subheading">Các đoạn mã nguồn cốt lõi trong Firmware (ESP32)</h4>
+                        <p>Mã nguồn được tối ưu hóa kiến trúc đa nhiệm thời gian thực trên vi điều khiển ESP32:</p>
+
+                        <div class="code-showcase-grid">
+                            <div class="code-card">
+                                <div class="code-card-header">
+                                    <span class="code-title">1. Khởi tạo tác vụ phần cứng độc lập (FreeRTOS Dual-Core Task)</span>
+                                    <span class="code-lang">C++ / FreeRTOS</span>
+                                </div>
+                                <pre class="code-content"><code>// Khoi tao tac vu phan cung rieng biet tren Core 1 voi do uu tien cao
+xTaskCreatePinnedToCore(
+    hardwareAlarmTask,   // Ham thuc thi tac vu
+    "HwAlarmTask",       // Ten dinh danh tac vu
+    4096,                // Dung luong Stack (bytes)
+    NULL,                // Tham so truyen vao
+    2,                   // Muc uu tien cao (Priority 2)
+    &alarmTaskHandle,    // Con tro quan ly tac vu
+    1                    // Co dinh chay tren Core 1 (Core 0 danh cho WiFi/TCP)
+);</code></pre>
+                            </div>
+
+                            <div class="code-card">
+                                <div class="code-card-header">
+                                    <span class="code-title">2. Máy trạng thái giám sát chu kỳ 20ms và kích hoạt cảnh báo tức thì</span>
+                                    <span class="code-lang">C++ / State Machine</span>
+                                </div>
+                                <pre class="code-content"><code>// Kiem tra phan cung dinh ky 20ms, phan hoi ngay lap tuc khong tre mang
+void hardwareAlarmTask(void* pvParameters) {
+    for (;;) {
+        portENTER_CRITICAL(&stateMutex);
+
+        // Doc trang thai cam bien tu MC-38 va tinh toan thoi gian mo
+        bool doorNow = (digitalRead(PIN_DOOR_MC38) == (IS_MC38_NC ? HIGH : LOW));
+        if (doorNow) {
+            if (!isDoorOpen) doorOpenStartTime = millis();
+            doorOpenDurationSec = (millis() - doorOpenStartTime) / 1000;
+        } else {
+            doorOpenDurationSec = 0;
+        }
+        isDoorOpen = doorNow;
+
+        // Danh gia vi pham nguong va xac dinh cap do canh bao
+        bool isTempAlert  = dhtReady && (currentTemp < TEMP_MIN || currentTemp > TEMP_MAX);
+        bool isDoorTooLong = isDoorOpen && (doorOpenDurationSec >= DOOR_DELAY_SEC);
+
+        int targetLevel = (isTempAlert || isDoorTooLong) ? 2 : (isDoorOpen ? 1 : 0);
+        updateOutputs(targetLevel); // Cap nhat LED va Coi truc tiep qua GPIO
+
+        portEXIT_CRITICAL(&stateMutex);
+        vTaskDelay(pdMS_TO_TICKS(20)); // Chu ky quet 20ms
+    }
+}</code></pre>
+                            </div>
+
+                            <div class="code-card">
+                                <div class="code-card-header">
+                                    <span class="code-title">3. Đồng bộ ngưỡng động hai chiều từ Firebase REST API</span>
+                                    <span class="code-lang">C++ / HTTPClient</span>
+                                </div>
+                                <pre class="code-content"><code>// Nhan va cap nhat nguong moi tu Firebase Realtime Database
+void fetchThresholds() {
+    HTTPClient http;
+    http.begin(buildFirebaseUrl(FB_PATH_THRESHOLDS));
+    int httpCode = http.GET();
+    if (httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        float tmin, tmax, dsec;
+        if (parseJsonFloat(payload, "temp_min", tmin)) TEMP_MIN = tmin;
+        if (parseJsonFloat(payload, "temp_max", tmax)) TEMP_MAX = tmax;
+        if (parseJsonFloat(payload, "door_delay_sec", dsec)) DOOR_DELAY_SEC = (unsigned long)dsec;
+    }
+    http.end();
+}</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div></section>
 
     </main>
