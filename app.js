@@ -1,4 +1,4 @@
-﻿/* ========================================
+/* ========================================
    IOT Cold Storage Mởnitor - Application Logic
    Firebase Realtime Database Integration
    ======================================== */
@@ -30,16 +30,13 @@
     //   /sensor_id              string  Ma bo cam bien
     //   /timestamp              number  Thoi diem do (epoch ms)
     //
-    // /history                  <-- ESP32 push moi 5 giây
+    // /history                  <-- ESP32 push moi 10-15 giây
     //   /{push_id}
     //     /temperature_c, humidity, door_status, door_open_sec, alarm, timestamp
     //
     // /thresholds               <-- Web ghi, ESP32 doc
-    //   /temp_lv1_min, temp_lv1_max   Mức 1 (LED xanh)
-    //   /temp_lv2_min, temp_lv2_max   Mức 2 (LED vàng)
-    //   /temp_lv3_min, temp_lv3_max   Mức 3 (LED đỏ + còi)
-    //   /door_lv1_sec, door_lv2_sec, door_lv3_sec
-    //
+    //   /temp_min, temp_max
+    //   /door_delay_sec
     //
     const DB_PATHS = {
         sensorData: 'sensor_data',
@@ -64,15 +61,9 @@
         activeAlerts: new Map(),
 
         thresholds: {
-            temp_lv1_min: 2,
-            temp_lv1_max: 8,
-            temp_lv2_min: 0,
-            temp_lv2_max: 10,
-            temp_lv3_min: -2,
-            temp_lv3_max: 15,
-            door_lv1_sec: 30,
-            door_lv2_sec: 60,
-            door_lv3_sec: 120
+            temp_min: 2,
+            temp_max: 8,
+            door_delay_sec: 10
         },
 
         miniChart: null,
@@ -135,15 +126,9 @@
         alertsPagination: $('#alertsPagination'),
         clearAlertsBtn: $('#clearAlertsBtn'),
 
-        tempLv1Min: $('#tempLv1Min'),
-        tempLv1Max: $('#tempLv1Max'),
-        tempLv2Min: $('#tempLv2Min'),
-        tempLv2Max: $('#tempLv2Max'),
-        tempLv3Min: $('#tempLv3Min'),
-        tempLv3Max: $('#tempLv3Max'),
-        doorLv1Sec: $('#doorLv1Sec'),
-        doorLv2Sec: $('#doorLv2Sec'),
-        doorLv3Sec: $('#doorLv3Sec'),
+        tempMin: $('#tempMin'),
+        tempMax: $('#tempMax'),
+        doorDelaySec: $('#doorDelaySec'),
         saveSettingsBtn: $('#saveSettingsBtn'),
         resetSettingsBtn: $('#resetSettingsBtn'),
 
@@ -220,12 +205,10 @@
         const th = state.thresholds;
 
         if (type === 'temp') {
-            if (value < th.temp_lv3_min || value > th.temp_lv3_max) {
-                status = 'danger'; statusText = value < th.temp_lv3_min ? 'Mức 3' : 'Mức 3';
-            } else if (value < th.temp_lv2_min || value > th.temp_lv2_max) {
-                status = 'warning'; statusText = 'Mức 2';
-            } else if (value < th.temp_lv1_min || value > th.temp_lv1_max) {
-                status = 'lv1'; statusText = 'Mức 1';
+            if (value < th.temp_min || value > th.temp_max) {
+                status = 'danger'; statusText = 'Vượt ngưỡng';
+            } else {
+                status = 'ok'; statusText = 'Bình thường';
             }
         }
         // Độ ẩm: chỉ hiển thị, không cảnh báo
@@ -253,33 +236,13 @@
         }
     }
 
-    function startDoorTimer(baseSec) {
-        if (state.doorTimerInterval) clearInterval(state.doorTimerInterval);
-        state.doorOpenSec = baseSec || 0;
-        state.doorOpenSyncTime = Date.now();
+    function setDoorTimerDisplay(sec) {
+        state.doorOpenSec = sec || 0;
         dom.doorTimer.textContent = formatDuration(state.doorOpenSec);
-
-        state.doorTimerInterval = setInterval(() => {
-            if (!state.doorOpen) return;
-            const elapsed = state.doorOpenSec + Math.floor((Date.now() - state.doorOpenSyncTime) / 1000);
-            dom.doorTimer.textContent = formatDuration(elapsed);
-
-            if (elapsed >= state.thresholds.door_lv3_sec) {
-                setAlert('door', 'danger', `Cửa mở qua lau: ${elapsed}s (muc 3: ${state.thresholds.door_lv3_sec}s)`);
-            } else if (elapsed >= state.thresholds.door_lv2_sec) {
-                setAlert('door', 'warning', `Cửa mở: ${elapsed}s (muc 2: ${state.thresholds.door_lv2_sec}s)`);
-            } else if (elapsed >= state.thresholds.door_lv1_sec) {
-                setAlert('door', 'lv1', `Cửa dang mo: ${elapsed}s`);
-            }
-        }, 1000);
+        updateAlertSummaryItems();
     }
 
-    function syncDoorTimer(doorOpenSec) {
-        state.doorOpenSec = doorOpenSec;
-        state.doorOpenSyncTime = Date.now();
-    }
-
-    function stopDoorTimer() {
+    function resetDoorTimer() {
         if (state.doorTimerInterval) {
             clearInterval(state.doorTimerInterval);
             state.doorTimerInterval = null;
@@ -287,6 +250,7 @@
         state.doorOpenSec = 0;
         state.doorOpenSyncTime = null;
         dom.doorTimer.textContent = '00:00:00';
+        updateAlertSummaryItems();
     }
 
     // ─── Alerts ──────────────────────────────────────────
@@ -365,27 +329,41 @@
     }
 
     function updateAlertSummaryItems() {
-        const types = ['temp', 'door'];
-        const labels = ['Nhiệt độ', 'Cửa'];
-        let html = '';
+        // Nhiệt độ: Chỉ báo "Bình thường" hoặc "Vượt ngưỡng"
+        let tempStatus = 'ok';
+        let tempText = 'Bình thường';
+        if (state.temperature !== null) {
+            if (state.temperature < state.thresholds.temp_min || state.temperature > state.thresholds.temp_max) {
+                tempStatus = 'danger';
+                tempText = 'Vượt ngưỡng';
+            }
+        }
 
-        types.forEach((type, i) => {
-            let status = 'ok';
-            let statusText = 'Bình thường';
-            state.activeAlerts.forEach(a => {
-                if (a.type === type) {
-                    if (a.severity === 'danger') { status = 'danger'; statusText = 'Mức 3'; }
-                    else if (a.severity === 'warning' && status !== 'danger') { status = 'warning'; statusText = 'Mức 2'; }
-                    else if (a.severity === 'lv1' && status === 'ok') { status = 'lv1'; statusText = 'Mức 1'; }
-                }
-            });
-            html += `
-                <div class="alert-summary-item ${status}">
-                    <span class="alert-dot"></span>
-                    <span class="alert-item-label">${labels[i]}</span>
-                    <span class="alert-item-status">${statusText}</span>
-                </div>`;
-        });
+        // Cửa: Chỉ báo "Đang đóng" hoặc "Đang mở" (hoặc "Mở quá lâu")
+        let doorStatus = 'ok';
+        let doorText = 'Đang đóng';
+        if (state.doorOpen) {
+            if (state.doorOpenSec >= (state.thresholds.door_delay_sec || 10)) {
+                doorStatus = 'danger';
+                doorText = 'Mở quá lâu';
+            } else {
+                doorStatus = 'warning';
+                doorText = 'Đang mở';
+            }
+        }
+
+        const html = `
+            <div class="alert-summary-item ${tempStatus}">
+                <span class="alert-dot"></span>
+                <span class="alert-item-label">Nhiệt độ</span>
+                <span class="alert-item-status">${tempText}</span>
+            </div>
+            <div class="alert-summary-item ${doorStatus}">
+                <span class="alert-dot"></span>
+                <span class="alert-item-label">Cửa</span>
+                <span class="alert-item-status">${doorText}</span>
+            </div>
+        `;
 
         dom.alertSummaryList.innerHTML = html;
     }
@@ -418,29 +396,16 @@
     // ─── Check Thresholds ────────────────────────────────
     function checkThresholds(temp, humi) {
         const th = state.thresholds;
-
-        // Nhiệt độ: muc 3 > muc 2 > muc 1 > binh thuong
-        if (temp < th.temp_lv3_min) {
-            setAlert('temp', 'danger', `Nhiệt độ: ${temp.toFixed(1)} C (muc 3: dưới ${th.temp_lv3_min} C)`);
-        } else if (temp > th.temp_lv3_max) {
-            setAlert('temp', 'danger', `Nhiệt độ: ${temp.toFixed(1)} C (muc 3: trên ${th.temp_lv3_max} C)`);
-        } else if (temp < th.temp_lv2_min) {
-            setAlert('temp', 'warning', `Nhiệt độ: ${temp.toFixed(1)} C (muc 2: dưới ${th.temp_lv2_min} C)`);
-        } else if (temp > th.temp_lv2_max) {
-            setAlert('temp', 'warning', `Nhiệt độ: ${temp.toFixed(1)} C (muc 2: trên ${th.temp_lv2_max} C)`);
-        } else if (temp < th.temp_lv1_min) {
-            setAlert('temp', 'lv1', `Nhiệt độ: ${temp.toFixed(1)} C (muc 1: dưới ${th.temp_lv1_min} C)`);
-        } else if (temp > th.temp_lv1_max) {
-            setAlert('temp', 'lv1', `Nhiệt độ: ${temp.toFixed(1)} C (muc 1: trên ${th.temp_lv1_max} C)`);
+        if (temp < th.temp_min || temp > th.temp_max) {
+            setAlert('temp', 'danger', 'Nhiệt độ vượt ngưỡng');
         } else {
             clearAlert('temp');
         }
-        // Độ ẩm: chỉ hiển thị, không cảnh báo
     }
 
     // ─── Process ESP32 Alarm Field ───────────────────────
     function processEspAlarm(alarm) {
-        if (!alarm || alarm === 'NONE' || alarm === '') {
+        if (!alarm || alarm === 'NONE' || alarm === '0' || alarm === '') {
             if (state.espAlarm !== 'NONE') {
                 clearAlert('esp_alarm');
             }
@@ -450,23 +415,25 @@
 
         state.espAlarm = alarm;
 
-        const alarmMap = {
-            'TEMP_HIGH': { severity: 'danger', msg: 'ESP32: Nhiệt độ vượt ngưỡng cao' },
-            'TEMP_LOW': { severity: 'danger', msg: 'ESP32: Nhiệt độ dưới nguong thap' },
-            'HUMI_HIGH': { severity: 'warning', msg: 'ESP32: Độ ẩm vượt ngưỡng cao' },
-            'HUMI_LOW': { severity: 'warning', msg: 'ESP32: Độ ẩm dưới nguong thap' },
-            'DOOR_OPEN_LONG': { severity: 'danger', msg: 'ESP32: Cửa mở qua lau' },
-        };
-
-        const mapped = alarmMap[alarm];
-        if (mapped) {
-            setAlert('esp_alarm', mapped.severity, mapped.msg);
+        if (alarm === '1') {
+            setAlert('esp_alarm', 'warning', 'ESP32: Đang mở cửa');
+        } else if (alarm === '2') {
+            setAlert('esp_alarm', 'danger', 'ESP32: Cần xử lý (Đèn đỏ + Còi)');
         } else {
-            setAlert('esp_alarm', 'warning', `ESP32: ${alarm}`);
+            const alarmMap = {
+                'TEMP_HIGH': { severity: 'danger', msg: 'ESP32: Nhiệt độ vượt ngưỡng cao' },
+                'TEMP_LOW': { severity: 'danger', msg: 'ESP32: Nhiệt độ dưới ngưỡng thấp' },
+                'DOOR_OPEN_LONG': { severity: 'danger', msg: 'ESP32: Cửa mở quá lâu' },
+            };
+            const mapped = alarmMap[alarm];
+            if (mapped) {
+                setAlert('esp_alarm', mapped.severity, mapped.msg);
+            } else {
+                setAlert('esp_alarm', 'warning', 'ESP32: ' + alarm);
+            }
         }
     }
 
-    // ─── Data Update (called from Firebase or simulation)
     function updateSensorData(data) {
         const now = new Date();
         const temp = data.temperature_c;
@@ -476,50 +443,55 @@
         const alarm = data.alarm || 'NONE';
         const sensorId = data.sensor_id || '---';
         const isOpen = (doorStatus === 'OPEN');
+        const effectiveDoorSec = isOpen ? (parseInt(doorOpenSec, 10) || 0) : 0;
 
-        state.temperature = temp;
-        state.humidity = humi;
-        state.sensorId = sensorId;
+        // Cập nhật giá trị hiển thị Nhiệt độ & Đồng hồ đo (Gauges)
+        if (temp !== undefined && temp !== null && !isNaN(temp)) {
+            state.temperature = temp;
+            if (dom.tempValue) dom.tempValue.textContent = temp.toFixed(1);
+            if (dom.tempGauge && dom.tempStatus) updateGauge(dom.tempGauge, dom.tempStatus, temp, -10, 40, 'temp');
+        }
 
-        dom.tempValue.textContent = temp.toFixed(1);
-        dom.humiValue.textContent = humi.toFixed(1);
+        // Cập nhật giá trị hiển thị Độ ẩm & Đồng hồ đo (Gauges)
+        if (humi !== undefined && humi !== null && !isNaN(humi)) {
+            state.humidity = humi;
+            if (dom.humiValue) dom.humiValue.textContent = humi.toFixed(0);
+            if (dom.humiGauge && dom.humiStatus) updateGauge(dom.humiGauge, dom.humiStatus, humi, 0, 100, 'humi');
+        }
 
-        updateGauge(dom.tempGauge, dom.tempStatus, temp, -10, 40, 'temp');
-        updateGauge(dom.humiGauge, dom.humiStatus, humi, 0, 100, 'humi');
-
-        if (dom.sysSensorId) {
+        if (sensorId && dom.sysSensorId) {
+            state.sensorId = sensorId;
             dom.sysSensorId.textContent = sensorId;
         }
 
         if (isOpen !== state.doorOpen) {
             state.doorOpen = isOpen;
             updateDoorDisplay(isOpen);
-            if (isOpen) {
-                startDoorTimer(doorOpenSec);
+        }
+
+        if (isOpen) {
+            // Hiển thị trực tiếp số giây nhận từ ESP32 qua Firebase
+            setDoorTimerDisplay(effectiveDoorSec);
+
+            const delayThreshold = state.thresholds.door_delay_sec || 10;
+            if (effectiveDoorSec >= delayThreshold || alarm === 'DOOR_OPEN_LONG' || alarm === '2') {
+                clearAlert('door');
+                setAlert('door', 'danger', 'Cửa mở quá lâu');
             } else {
                 clearAlert('door');
-                stopDoorTimer();
+                setAlert('door', 'warning', 'Cửa đang mở');
             }
-        } else if (isOpen) {
-            syncDoorTimer(doorOpenSec);
+        } else {
+            // Cửa đóng -> ngay lập tức reset về 00:00:00 và xóa cảnh báo cửa
+            clearAlert('door');
+            resetDoorTimer();
         }
 
         processEspAlarm(alarm);
         checkThresholds(temp, humi);
+        updateAlertSummaryItems();
 
-        state.historyData.unshift({
-            timestamp: data.timestamp ? new Date(data.timestamp) : now,
-            temperature_c: temp,
-            humidity: humi,
-            door_status: doorStatus,
-            door_open_sec: doorOpenSec,
-            alarm: alarm
-        });
-
-        if (state.historyData.length > 2000) {
-            state.historyData = state.historyData.slice(0, 2000);
-        }
-
+        // Xu hướng thời gian thực trên Dashboard (chỉ hiển thị xem, không ghi lịch sử)
         const timeStr = formatTime(data.timestamp ? new Date(data.timestamp) : now);
         state.trendLabels.push(timeStr);
         state.trendTemp.push(temp);
@@ -532,8 +504,6 @@
         }
 
         updateMiniChart();
-        updateHistoryChart();
-        renderHistoryTable();
     }
 
     // ─── Charts ──────────────────────────────────────────
@@ -547,10 +517,10 @@
         plugins: {
             legend: { display: false },
             tooltip: {
-                backgroundColor: '#1e293b',
-                titleColor: '#f1f5f9',
-                bodyColor: '#94a3b8',
-                borderColor: '#334155',
+                backgroundColor: '#ffffff',
+                titleColor: '#0f172a',
+                bodyColor: '#475569',
+                borderColor: '#e2e8f0',
                 borderWidth: 1,
                 cornerRadius: 8,
                 padding: 10,
@@ -560,12 +530,12 @@
         },
         scales: {
             x: {
-                grid: { color: 'rgba(51,65,85,0.3)', drawBorder: false },
+                grid: { color: 'rgba(203,213,225,0.4)', drawBorder: false },
                 ticks: { color: '#64748b', font: { family: 'Inter', size: 10 }, maxTicksLimit: 10 },
                 border: { display: false }
             },
             y: {
-                grid: { color: 'rgba(51,65,85,0.3)', drawBorder: false },
+                grid: { color: 'rgba(203,213,225,0.4)', drawBorder: false },
                 ticks: { color: '#64748b', font: { family: 'Inter', size: 10 } },
                 border: { display: false }
             }
@@ -673,8 +643,7 @@
                     legend: {
                         display: true,
                         labels: {
-                            color: '#94a3b8',
-                            font: { family: 'Inter', size: 12 },
+                            color: '#475569', font: { family: 'Inter', size: 12 },
                             usePointStyle: true,
                             pointStyle: 'circle',
                             padding: 20,
@@ -759,7 +728,7 @@
         pageData.forEach((row, i) => {
             const idx = start + i + 1;
             const severityClass = row.severity;
-            const severityLabel = row.severity === 'danger' ? 'Mức 3' : row.severity === 'warning' ? 'Mức 2' : 'Mức 1';
+            const severityLabel = row.severity === 'danger' ? 'Cần xử lý' : row.severity === 'warning' ? 'Đang mở cửa' : 'Bình thường';
             html += `
                 <tr>
                     <td>${idx}</td>
@@ -806,57 +775,128 @@
         });
     }
 
-    // ─── Excel Export ────────────────────────────────────
-    function exportToExcel() {
-        if (state.historyData.length === 0) {
-            showToast('Khong co du lieu de xuat', 'error');
+    // ─── Excel Export ─────────────────────────────────────
+    function downloadExcelBlob(buffer, filename) {
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        if (typeof saveAs === 'function') {
+            saveAs(blob, filename);
+            return;
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function formatExcelDate(ts) {
+        if (!ts) return new Date().toLocaleString('vi-VN');
+        const d = ts instanceof Date ? ts : new Date(ts);
+        return isNaN(d.getTime()) ? String(ts) : d.toLocaleString('vi-VN');
+    }
+
+    function formatExcelNum(val) {
+        const n = parseFloat(val);
+        return isNaN(n) ? '0.0' : n.toFixed(1);
+    }
+
+    async function exportToExcel() {
+        // Collect rows: prefer historyData, fallback to current realtime reading if history is empty
+        let rowsToExport = [];
+        if (state.historyData && state.historyData.length > 0) {
+            rowsToExport = state.historyData;
+        } else if (state.temperature !== null) {
+            rowsToExport = [{
+                timestamp: new Date(),
+                temperature_c: state.temperature,
+                humidity: state.humidity !== null ? state.humidity : 0,
+                door_status: state.doorOpen ? 'OPEN' : 'CLOSED',
+                door_open_sec: state.doorOpenSec || 0,
+                alarm: state.espAlarm || 'NONE'
+            }];
+        } else {
+            showToast('Không có dữ liệu để xuất', 'error');
             return;
         }
 
-        const wsData = [['STT', 'Thời gian', 'Nhiệt độ (C)', 'Độ ẩm (%)', 'Trạng thái cửa', 'Thời gian mở (s)', 'Alarm']];
-        state.historyData.forEach((row, i) => {
-            wsData.push([
-                i + 1,
-                row.timestamp.toLocaleString('vi-VN'),
-                row.temperature_c.toFixed(1),
-                row.humidity.toFixed(1),
-                row.door_status === 'OPEN' ? 'Mở' : 'Đóng',
-                row.door_open_sec || 0,
-                row.alarm || 'NONE'
-            ]);
-        });
+        try {
+            if (typeof ExcelJS !== 'undefined') {
+                const workbook = new ExcelJS.Workbook();
+                const sheet = workbook.addWorksheet('Lịch sử đo lường');
 
-        const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.aoa_to_sheet(wsData);
-        ws['!cols'] = [
-            { wch: 6 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 16 }
-        ];
-        XLSX.utils.book_append_sheet(wb, ws, 'Lich su do luong');
+                sheet.columns = [
+                    { header: 'STT', key: 'stt', width: 8 },
+                    { header: 'Thời gian', key: 'time', width: 22 },
+                    { header: 'Nhiệt độ (°C)', key: 'temp', width: 16 },
+                    { header: 'Độ ẩm (%)', key: 'humi', width: 16 },
+                    { header: 'Trạng thái cửa', key: 'door', width: 18 },
+                    { header: 'Thời gian mở (s)', key: 'door_sec', width: 18 },
+                    { header: 'Alarm', key: 'alarm', width: 20 }
+                ];
 
-        if (state.alertHistory.length > 0) {
-            const alertData = [['STT', 'Thời gian', 'Loại', 'Mức độ', 'Chi tiết']];
-            state.alertHistory.forEach((row, i) => {
-                alertData.push([
-                    i + 1,
-                    row.timestamp.toLocaleString('vi-VN'),
-                    getAlertTypeLabel(row.type),
-                    row.severity === 'danger' ? 'Nguy hiem' : 'Chu y',
-                    row.message
-                ]);
-            });
-            const wsAlerts = XLSX.utils.aoa_to_sheet(alertData);
-            wsAlerts['!cols'] = [
-                { wch: 6 }, { wch: 22 }, { wch: 12 }, { wch: 12 }, { wch: 50 }
-            ];
-            XLSX.utils.book_append_sheet(wb, wsAlerts, 'Lịch sử cảnh báo');
+                // Style header row
+                const headerRow = sheet.getRow(1);
+                headerRow.font = { bold: true, color: { argb: 'FF1E293B' } };
+                headerRow.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FFF1F5F9' }
+                };
+
+                rowsToExport.forEach((row, i) => {
+                    const isDoorOpen = (row.door_status === 'OPEN');
+                    const doorText = isDoorOpen ? 'OPEN' : 'CLOSED';
+                    // Cửa đã ĐÓNG thì thời gian mở bắt buộc là 0 giây
+                    const doorSec = isDoorOpen ? (parseInt(row.door_open_sec) || 0) : 0;
+
+                    let alarmStr = 'Bình thường';
+                    const a = String(row.alarm || '0').toUpperCase();
+                    const isTempAlert = a.includes('TEMP') || a.includes('HIGH') || a.includes('LOW');
+                    const isDoorLong = a.includes('LONG') || (isDoorOpen && doorSec >= (state.thresholds.door_delay_sec || 10));
+
+                    if (a === '2' || isTempAlert || isDoorLong) {
+                        alarmStr = 'Cần xử lý';
+                    } else if (isDoorOpen) {
+                        alarmStr = 'Đang mở cửa';
+                    } else {
+                        alarmStr = 'Bình thường';
+                    }
+
+                    const newRow = sheet.addRow({
+                        stt: i + 1,
+                        time: formatExcelDate(row.timestamp),
+                        temp: formatExcelNum(row.temperature_c),
+                        humi: formatExcelNum(row.humidity),
+                        door: doorText,
+                        door_sec: doorSec,
+                        alarm: alarmStr
+                    });
+
+                    // Set red color for door status (OPEN and CLOSED)
+                    const doorCell = newRow.getCell(5);
+                    doorCell.font = { color: { argb: 'FFFF0000' }, bold: true };
+
+                    // Set red color for Alarm status
+                    const alarmCell = newRow.getCell(7);
+                    alarmCell.font = { color: { argb: 'FFFF0000' }, bold: true };
+                });
+
+                const buffer = await workbook.xlsx.writeBuffer();
+                const fileName = 'LichSu_KhoLanh_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+                downloadExcelBlob(buffer, fileName);
+                showToast('Đã xuất file Excel (' + rowsToExport.length + ' bản ghi)', 'success');
+            } else {
+                showToast('Chưa tải xong thư viện Excel, vui lòng thử lại', 'error');
+            }
+        } catch (err) {
+            console.error('Export error:', err);
+            showToast('Lỗi khi xuất file Excel: ' + (err.message || err), 'error');
         }
-
-        const fileName = `IOT_KhoLanh_${new Date().toISOString().slice(0, 10)}.xlsx`;
-        XLSX.writeFile(wb, fileName);
-        showToast(`Da xuat file ${fileName}`, 'success');
     }
 
-    // ─── Thresholds ──────────────────────────────────────
     function loadThresholds() {
         const saved = localStorage.getItem('coldvault_thresholds');
         if (saved) {
@@ -864,27 +904,55 @@
                 Object.assign(state.thresholds, JSON.parse(saved));
             } catch (e) { /* ignore */ }
         }
-        dom.tempLv1Min.value = state.thresholds.temp_lv1_min;
-        dom.tempLv1Max.value = state.thresholds.temp_lv1_max;
-        dom.tempLv2Min.value = state.thresholds.temp_lv2_min;
-        dom.tempLv2Max.value = state.thresholds.temp_lv2_max;
-        dom.tempLv3Min.value = state.thresholds.temp_lv3_min;
-        dom.tempLv3Max.value = state.thresholds.temp_lv3_max;
-        dom.doorLv1Sec.value = state.thresholds.door_lv1_sec;
-        dom.doorLv2Sec.value = state.thresholds.door_lv2_sec;
-        dom.doorLv3Sec.value = state.thresholds.door_lv3_sec;
+        if (dom.tempMin) dom.tempMin.value = state.thresholds.temp_min;
+        if (dom.tempMax) dom.tempMax.value = state.thresholds.temp_max;
+        if (dom.doorDelaySec) dom.doorDelaySec.value = state.thresholds.door_delay_sec;
+
+        const keys = ['tempMin', 'tempMax', 'doorDelaySec'];
+        keys.forEach(id => {
+            const slider = document.getElementById('slider_' + id);
+            const input = dom[id];
+            if (slider && input) {
+                slider.value = input.value;
+            }
+        });
+    }
+
+    
+    
+    let autoSaveTimeout = null;
+    function triggerAutoSave() {
+        if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
+        autoSaveTimeout = setTimeout(() => {
+            saveThresholds();
+        }, 300);
+    }
+
+    function setupThresholdInputs() {
+        ['tempMin', 'tempMax', 'doorDelaySec'].forEach(id => {
+            const input = dom[id];
+            const slider = document.getElementById('slider_' + id);
+            if (input && slider) {
+                slider.addEventListener('input', () => {
+                    input.value = slider.value;
+                    triggerAutoSave();
+                });
+                input.addEventListener('input', () => {
+                    slider.value = input.value;
+                    triggerAutoSave();
+                });
+                input.addEventListener('change', () => {
+                    slider.value = input.value;
+                    saveThresholds();
+                });
+            }
+        });
     }
 
     function saveThresholds() {
-        state.thresholds.temp_lv1_min = parseFloat(dom.tempLv1Min.value) || 2;
-        state.thresholds.temp_lv1_max = parseFloat(dom.tempLv1Max.value) || 8;
-        state.thresholds.temp_lv2_min = parseFloat(dom.tempLv2Min.value) || 0;
-        state.thresholds.temp_lv2_max = parseFloat(dom.tempLv2Max.value) || 10;
-        state.thresholds.temp_lv3_min = parseFloat(dom.tempLv3Min.value) || -2;
-        state.thresholds.temp_lv3_max = parseFloat(dom.tempLv3Max.value) || 15;
-        state.thresholds.door_lv1_sec = parseInt(dom.doorLv1Sec.value) || 30;
-        state.thresholds.door_lv2_sec = parseInt(dom.doorLv2Sec.value) || 60;
-        state.thresholds.door_lv3_sec = parseInt(dom.doorLv3Sec.value) || 120;
+        state.thresholds.temp_min = parseFloat(dom.tempMin.value) || 2;
+        state.thresholds.temp_max = parseFloat(dom.tempMax.value) || 8;
+        state.thresholds.door_delay_sec = parseInt(dom.doorDelaySec.value) || 10;
 
         localStorage.setItem('coldvault_thresholds', JSON.stringify(state.thresholds));
 
@@ -896,7 +964,7 @@
                     showToast('Đã lưu local, lỗi đồng bộ Firebase', 'error');
                 });
         } else {
-            showToast('Da luu cai dat (chua ket noi Firebase)', 'success');
+            showToast('Đã lưu cài đặt (chưa kết nối Firebase)', 'success');
         }
 
         if (state.temperature !== null) {
@@ -906,20 +974,19 @@
 
     function resetThresholds() {
         state.thresholds = {
-            temp_lv1_min: 2, temp_lv1_max: 8,
-            temp_lv2_min: 0, temp_lv2_max: 10,
-            temp_lv3_min: -2, temp_lv3_max: 15,
-            door_lv1_sec: 30, door_lv2_sec: 60, door_lv3_sec: 120
+            temp_min: 2,
+            temp_max: 8,
+            door_delay_sec: 10
         };
         localStorage.removeItem('coldvault_thresholds');
         loadThresholds();
-        showToast('Da dat lai mac dinh', 'info');
+        setupThresholdInputs();
+        showToast('Đã đặt lại mặc định', 'info');
     }
 
-    // ─── Connection Status ───────────────────────────────
     function setConnectionStatus(status) {
         const dotClass = status === 'online' ? 'online' : status === 'warning' ? 'warning' : 'offline';
-        const text = status === 'online' ? 'Da ket noi' : status === 'warning' ? 'Mất kết nối' : 'Chờ kết nối';
+        const text = status === 'online' ? 'Đã kết nối' : status === 'warning' ? 'Mất kết nối' : 'Chờ kết nối';
         const statusDot = dom.connectionStatus.querySelector('.status-dot');
         const statusText = dom.connectionStatus.querySelector('.status-text');
         statusDot.className = 'status-dot ' + dotClass;
@@ -983,20 +1050,20 @@
             }
         });
 
-        // Đọc ngưỡng cảnh báo từ Firebase (ESP32 co the da set)
-        db.ref(DB_PATHS.thresholds).once('value', (snapshot) => {
+        // Đọc ngưỡng cảnh báo từ Firebase (lắng nghe thời gian thực)
+        db.ref(DB_PATHS.thresholds).on('value', (snapshot) => {
             const data = snapshot.val();
             if (data) {
                 Object.assign(state.thresholds, data);
                 loadThresholds();
-                console.log('Đã tải ngưỡng cảnh báo từ Firebase:', data);
+                console.log('Đã cập nhật ngưỡng cảnh báo từ Firebase:', data);
             } else {
                 // Ghi nguong mac dinh len Firebase lan dau
                 db.ref(DB_PATHS.thresholds).set(state.thresholds);
             }
         });
 
-        // Doc lich su tu Firebase (giời han 200 ban ghi gan nhat)
+        // Doc lich su tu Firebase (gioi han 200 ban ghi gan nhat)
         db.ref(DB_PATHS.history).orderByChild('timestamp').limitToLast(200).on('child_added', (snapshot) => {
             const data = snapshot.val();
             if (data && data.temperature_c !== undefined) {
@@ -1054,9 +1121,10 @@
         }
 
         let alarm = 'NONE';
-        if (simTemp > state.thresholds.temp_lv3_max) alarm = 'TEMP_HIGH';
-        else if (simTemp < state.thresholds.temp_lv3_min) alarm = 'TEMP_LOW';
-        else if (simDoor && simDoorOpenSec > state.thresholds.door_lv3_sec) alarm = 'DOOR_OPEN_LONG';
+        if (simTemp > state.thresholds.temp_max) alarm = 'TEMP_HIGH';
+        else if (simTemp < state.thresholds.temp_min) alarm = 'TEMP_LOW';
+        else if (simDoor && simDoorOpenSec >= state.thresholds.door_delay_sec) alarm = 'DOOR_OPEN_LONG';
+        else if (simDoor) alarm = '1';
 
         updateSensorData({
             temperature_c: Math.round(simTemp * 10) / 10,
@@ -1072,7 +1140,23 @@
     function startSimulation() {
         setConnectionStatus('online');
         simulateSensorData();
-        state.simInterval = setInterval(simulateSensorData, 5000);
+        state.simInterval = setInterval(() => {
+            simulateSensorData();
+            // Ghi lịch sử mô phỏng đúng 5s một lần khi không có Firebase
+            if (!state.firebaseReady && state.temperature !== null) {
+                state.historyData.unshift({
+                    timestamp: new Date(),
+                    temperature_c: state.temperature,
+                    humidity: state.humidity,
+                    door_status: state.doorOpen ? 'OPEN' : 'CLOSED',
+                    door_open_sec: state.doorOpen ? state.doorOpenSec : 0,
+                    alarm: state.espAlarm || 'NONE'
+                });
+                if (state.historyData.length > 2000) state.historyData.pop();
+                renderHistoryTable();
+                updateHistoryChart();
+            }
+        }, 5000);
         showToast('Chế độ mô phỏng (chưa kết nối Firebase)', 'info');
     }
 
@@ -1111,6 +1195,18 @@
         });
 
         dom.saveSettingsBtn.addEventListener('click', saveThresholds);
+        ['tempMin', 'tempMax', 'doorDelaySec'].forEach(id => {
+            const input = dom[id];
+            const slider = document.getElementById('slider_' + id);
+            if (input) {
+                input.addEventListener('input', triggerAutoSave);
+                input.addEventListener('change', triggerAutoSave);
+            }
+            if (slider) {
+                slider.addEventListener('input', triggerAutoSave);
+                slider.addEventListener('change', triggerAutoSave);
+            }
+        });
         dom.resetSettingsBtn.addEventListener('click', resetThresholds);
 
         document.addEventListener('keydown', (e) => {

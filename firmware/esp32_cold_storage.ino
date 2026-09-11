@@ -2,18 +2,13 @@
  * HE THONG IOT GIAM SAT KHO LANH (MO PHONG BANG THUNG XOP)
  * Vi dieu khien: ESP32 Dev Module (WROOM-32)
  * Cam bien:
- *   - DHT22 (Nhiet do & Do am)
- *   - MC-38 (Cam bien tu dong/mo cua)
- * Canh bao 3 muc:
- *   - LED Xanh la (Muc 1): Canh bao nhe
- *   - LED Vang   (Muc 2): Canh bao trung binh
- *   - LED Do     (Muc 3): Nguy hiem + Coi bao
+ *   - DHT22 (Nhiet do & Do am) - GPIO 4
+ *   - MC-38 (Cam bien tu dong/mo cua) - GPIO 18 (INPUT_PULLUP)
+ * Co che canh bao thoi gian thuc (FreeRTOS High-Priority Task):
+ *   - LED Xanh la: Binh thuong (Cua dong VA Nhiet do an toan)
+ *   - LED Vang:    Dang mo cua (> 0s, chua vuot nguong, nhiet do an toan)
+ *   - LED Do + Coi: Can xu ly (Cua mo qua lau >= door_delay_sec HOAC Nhiet do vuot nguong)
  * Ket noi: Firebase Realtime Database qua HTTPS REST API
- *
- * Firebase Data Structure:
- *   /sensor_data   <- ESP32 ghi du lieu hien tai (PUT)
- *   /history       <- ESP32 push moi 5 giay (POST)
- *   /thresholds    <- Web ghi, ESP32 doc (GET)
  * ============================================================================== */
 
 #include <WiFi.h>
@@ -29,12 +24,8 @@ const char* WIFI_PASSWORD = "10131719";
 const char* FIREBASE_HOST = "https://iot-sytems-default-rtdb.firebaseio.com";
 const char* FIREBASE_AUTH = "";
 
-// Cac duong dan Firebase khop voi Web Dashboard
-// Web doc: /sensor_data
-// Web doc: /history
-// Web ghi: /thresholds -> ESP32 doc de cap nhat nguong
-#define FB_PATH_SENSOR    "/sensor_data.json"
-#define FB_PATH_HISTORY   "/history.json"
+#define FB_PATH_SENSOR     "/sensor_data.json"
+#define FB_PATH_HISTORY    "/history.json"
 #define FB_PATH_THRESHOLDS "/thresholds.json"
 
 const char* SENSOR_ID = "ESP32_KHO_LANH";
@@ -42,11 +33,11 @@ const char* SENSOR_ID = "ESP32_KHO_LANH";
 // ==================== 3. GPIO ESP32 ====================
 #define PIN_DHT22         4    // DATA cam bien DHT22
 #define PIN_DOOR_MC38     18   // Cam bien tu MC-38 (INPUT_PULLUP)
-#define PIN_LED_GREEN     25   // LED Xanh la - Muc 1
-#define PIN_LED_YELLOW    33   // LED Vang    - Muc 2
-#define PIN_LED_RED       32   // LED Do      - Muc 3
-#define PIN_LED_ONBOARD   2    // LED onboard ESP32
-#define PIN_BUZZER        26   // Coi buzzer  (dat -1 neu chua lap)
+#define PIN_LED_GREEN     25   // LED Xanh la - Binh thuong
+#define PIN_LED_YELLOW    33   // LED Vang    - Dang mo cua
+#define PIN_LED_RED       32   // LED Do      - Can xu ly
+#define PIN_LED_ONBOARD   2    // LED onboard ESP32 (Bao WiFi)
+#define PIN_BUZZER        16   // Coi buzzer  - Can xu ly
 
 // ==================== 4. CAU HINH CAM BIEN ====================
 #define DHTTYPE DHT22
@@ -57,68 +48,157 @@ DHT dht(PIN_DHT22, DHTTYPE);
 //   Cua MO   -> tiep diem ho   -> keo 3.3V -> digitalRead = HIGH
 const bool IS_MC38_NC = true;
 
-// Che do test: bat tat ca LED de kiem tra mach
-const bool TEST_ALL_LEDS_ON = false;
+// ==================== 5. NGUONG CANH BAO ====================
+// Duoc cap nhat dong tu Firebase /thresholds
+volatile float TEMP_MIN = 2.0;
+volatile float TEMP_MAX = 8.0;
+volatile unsigned long DOOR_DELAY_SEC = 10; // Mac dinh 10s theo yeu cau
+// ==================== 6. BIEN TRANG THAI REAL-TIME ====================
+volatile float currentTemp = 0.0;
+volatile float currentHum  = 0.0;
+volatile bool  dhtReady    = false;
 
-// ==================== 5. NGUONG CANH BAO MAC DINH ====================
-// Cac gia tri nay se duoc cap nhat tu Firebase /thresholds
-// Khop voi Web Dashboard: 3 muc canh bao
+volatile bool isDoorOpen = false;
+volatile unsigned long doorOpenStartTime = 0;
+volatile unsigned long doorOpenDurationSec = 0;
 
-// Nhiet do
-float TEMP_LV1_MIN =  2.0;  // Muc 1: duoi 2°C -> LED xanh
-float TEMP_LV1_MAX =  8.0;  // Muc 1: tren 8°C -> LED xanh
-float TEMP_LV2_MIN =  0.0;  // Muc 2: duoi 0°C -> LED vang
-float TEMP_LV2_MAX = 10.0;  // Muc 2: tren 10°C -> LED vang
-float TEMP_LV3_MIN = -2.0;  // Muc 3: duoi -2°C -> LED do + coi
-float TEMP_LV3_MAX = 15.0;  // Muc 3: tren 15°C -> LED do + coi
+// Trang thai LED & Coi
+volatile bool ledGreenState  = false;
+volatile bool ledYellowState = false;
+volatile bool ledRedState    = false;
+volatile bool buzzerActive   = false;
 
-// Cua (giay)
-unsigned long DOOR_LV1_SEC = 30;   // Muc 1: > 30s -> LED xanh
-unsigned long DOOR_LV2_SEC = 60;   // Muc 2: > 60s -> LED vang
-unsigned long DOOR_LV3_SEC = 120;  // Muc 3: > 120s -> LED do + coi
+// Muc canh bao: 0 = Binh thuong (Xanh), 1 = Dang mo (Vang), 2 = Can xu ly (Do + Coi)
+volatile int currentAlertLevel = 0;
+String alarmString = "0";
 
-// ==================== 6. THOI GIAN ====================
-const unsigned long FB_SEND_INTERVAL    = 5000;  // Gui du lieu moi 5 giay
-const unsigned long FB_THRESHOLD_INTERVAL = 3000;  // Doc nguong tu Firebase moi 3 giay
-const unsigned long DHT_READ_INTERVAL   = 2000;  // Doc DHT22 moi 2 giay
+// Co bao can day du lieu len Firebase ngay (khi doi trang thai)
+volatile bool flagNeedPushNow = false;
 
-// ==================== 7. BIEN TRANG THAI ====================
-float currentTemp = 0.0;
-float currentHum  = 0.0;
-bool  dhtReady    = false;
+// Mutex de bao ve du lieu chia se giua 2 Task
+portMUX_TYPE stateMutex = portMUX_INITIALIZER_UNLOCKED;
 
-bool isDoorOpen = false;
-bool lastDoorOpenState = false;
-unsigned long doorOpenStartTime = 0;
-unsigned long doorOpenDurationSec = 0;
+// ==================== 7. SSL & HTTP CLIENTS ====================
+// Kenh 1: Chuyen gui sensor_data real-time, duy tri ket noi Keep-Alive (toc do ~40-80ms/lan)
+WiFiClientSecure sslSensor;
+HTTPClient httpSensor;
 
-// Trang thai LED
-bool ledGreenState  = false;
-bool ledYellowState = false;
-bool ledRedState    = false;
-bool buzzerActive   = false;
-
-// Muc canh bao hien tai: 0 = binh thuong, 1 = muc 1, 2 = muc 2, 3 = muc 3
-int currentAlertLevel = 0;
-String alarmString = "NONE";
-
-// Timers
-unsigned long lastDhtReadTime = 0;
-unsigned long lastFirebaseSendTime = 0;
-unsigned long lastThresholdReadTime = 0;
-unsigned long lastBuzzerToggle = 0;
-bool buzzerTone = false;
-
-// SSL Client
-WiFiClientSecure sslClient;
+// Kenh 2: Xu ly doc nguong (thresholds) va ghi lich su (history) khi he thong ranh
+WiFiClientSecure sslAux;
+HTTPClient httpAux;
 
 // ==================== HAM DOC CAM BIEN CUA MC-38 ====================
-bool readDoorState() {
+inline bool readDoorState() {
   int pinVal = digitalRead(PIN_DOOR_MC38);
-  if (IS_MC38_NC) {
-    return (pinVal == HIGH);
-  } else {
-    return (pinVal == LOW);
+  return IS_MC38_NC ? (pinVal == HIGH) : (pinVal == LOW);
+}
+
+// ==================== HAM DIEU KHIEN LED + COI ====================
+void updateOutputs(int level) {
+  bool g = (level == 0);
+  bool y = (level == 1);
+  bool r = (level == 2);
+  bool b = (level == 2);
+
+  if (ledGreenState != g) {
+    ledGreenState = g;
+    digitalWrite(PIN_LED_GREEN, g ? HIGH : LOW);
+  }
+  if (ledYellowState != y) {
+    ledYellowState = y;
+    digitalWrite(PIN_LED_YELLOW, y ? HIGH : LOW);
+  }
+  if (ledRedState != r) {
+    ledRedState = r;
+    digitalWrite(PIN_LED_RED, r ? HIGH : LOW);
+  }
+  if (PIN_BUZZER >= 0 && buzzerActive != b) {
+    buzzerActive = b;
+    digitalWrite(PIN_BUZZER, b ? HIGH : LOW);
+  }
+}
+
+// ==================== HAM TAO CHUOI ALARM ====================
+String buildAlarmString(int level) {
+  if (level == 2) {
+    if (dhtReady && currentTemp > TEMP_MAX) return "TEMP_HIGH";
+    if (dhtReady && currentTemp < TEMP_MIN) return "TEMP_LOW";
+    if (isDoorOpen && doorOpenDurationSec >= DOOR_DELAY_SEC) return "DOOR_OPEN_LONG";
+    return "2";
+  }
+  if (level == 1) return "1";
+  return "0";
+}
+
+// ==============================================================================
+// TASK PHAN CUNG REAL-TIME (FREERTOS TASK - PRIORITY 2)
+// Chay doc lap tren Core 1, chu ky 20ms, tuyet doi khong bi block boi mang!
+// Khi cua mo du 10s (DOOR_DELAY_SEC), coi va den do se bat dung mili-giay!
+// ==============================================================================
+void hardwareAlarmTask(void *pvParameters) {
+  bool lastDoor = false;
+
+  while (true) {
+    bool doorNow = readDoorState();
+    unsigned long now = millis();
+
+    portENTER_CRITICAL(&stateMutex);
+
+    // 1. Kiem tra thay doi cua
+    if (doorNow) {
+      if (!isDoorOpen) {
+        // Vua mo cua
+        isDoorOpen = true;
+        doorOpenStartTime = now;
+        doorOpenDurationSec = 0;
+        flagNeedPushNow = true;
+      } else {
+        // Cua van dang mo
+        doorOpenDurationSec = (now - doorOpenStartTime) / 1000;
+      }
+    } else {
+      if (isDoorOpen) {
+        // Vua dong cua
+        isDoorOpen = false;
+        doorOpenDurationSec = 0;
+        flagNeedPushNow = true;
+      }
+    }
+
+    // 2. Danh gia trang thai canh bao
+    // - Binh thuong (0 - Xanh): Cua dong VA Nhiet do an toan
+    // - Dang mo cua (1 - Vang): Cua dang mo (> 0s), chua qua han, nhiet do an toan
+    // - Can xu ly (2 - Do + Coi): Cua mo qua lau (>= DOOR_DELAY_SEC) HOAC Nhiet do vuot nguong
+    bool isTempAlert = dhtReady && (currentTemp < TEMP_MIN || currentTemp > TEMP_MAX);
+    bool isDoorTooLong = isDoorOpen && (doorOpenDurationSec >= DOOR_DELAY_SEC);
+
+    int targetLevel = 0;
+    if (isTempAlert || isDoorTooLong) {
+      targetLevel = 2; // Do + Coi
+    } else if (isDoorOpen) {
+      targetLevel = 1; // Vang
+    } else {
+      targetLevel = 0; // Xanh
+    }
+
+    if (targetLevel != currentAlertLevel) {
+      currentAlertLevel = targetLevel;
+      flagNeedPushNow = true;
+    }
+
+    // 3. Kich hoat phan cung tuc thi
+    updateOutputs(currentAlertLevel);
+
+    portEXIT_CRITICAL(&stateMutex);
+
+    // In log khi co su thay doi cua de theo doi qua Serial
+    if (doorNow != lastDoor) {
+      lastDoor = doorNow;
+      Serial.printf("[CUA] -> %s | Nguong cho phep: %lus | Level: %d\n",
+                    doorNow ? "DANG MO" : "DA DONG", DOOR_DELAY_SEC, currentAlertLevel);
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(20)); // Delay 20ms
   }
 }
 
@@ -131,223 +211,6 @@ String buildFirebaseUrl(const char* path) {
   return url;
 }
 
-// ==================== HAM XAC DINH MUC CANH BAO ====================
-// Tra ve muc canh bao cao nhat (0-3) tu nhiet do va cua
-int calculateAlertLevel() {
-  int level = 0;
-
-  // Kiem tra nhiet do: muc 3 > muc 2 > muc 1
-  if (dhtReady) {
-    if (currentTemp < TEMP_LV3_MIN || currentTemp > TEMP_LV3_MAX) {
-      level = 3;
-    } else if (currentTemp < TEMP_LV2_MIN || currentTemp > TEMP_LV2_MAX) {
-      if (level < 2) level = 2;
-    } else if (currentTemp < TEMP_LV1_MIN || currentTemp > TEMP_LV1_MAX) {
-      if (level < 1) level = 1;
-    }
-  }
-
-  // Kiem tra cua: muc 3 > muc 2 > muc 1
-  if (isDoorOpen) {
-    if (doorOpenDurationSec >= DOOR_LV3_SEC) {
-      level = 3;
-    } else if (doorOpenDurationSec >= DOOR_LV2_SEC) {
-      if (level < 2) level = 2;
-    } else if (doorOpenDurationSec >= DOOR_LV1_SEC) {
-      if (level < 1) level = 1;
-    }
-  }
-
-  return level;
-}
-
-// ==================== HAM TAO CHUOI ALARM ====================
-// Tao chuoi alarm gui len Firebase de Web hieu
-String buildAlarmString(int level) {
-  if (level == 0) return "NONE";
-
-  // Uu tien nhiet do truoc, cua sau
-  if (level == 3) {
-    if (currentTemp > TEMP_LV3_MAX) return "TEMP_HIGH";
-    if (currentTemp < TEMP_LV3_MIN) return "TEMP_LOW";
-    if (isDoorOpen && doorOpenDurationSec >= DOOR_LV3_SEC) return "DOOR_OPEN_LONG";
-  }
-  if (level == 2) {
-    if (currentTemp > TEMP_LV2_MAX) return "TEMP_HIGH";
-    if (currentTemp < TEMP_LV2_MIN) return "TEMP_LOW";
-    if (isDoorOpen && doorOpenDurationSec >= DOOR_LV2_SEC) return "DOOR_WARN";
-  }
-  if (level == 1) {
-    if (currentTemp > TEMP_LV1_MAX) return "TEMP_HIGH";
-    if (currentTemp < TEMP_LV1_MIN) return "TEMP_LOW";
-    if (isDoorOpen && doorOpenDurationSec >= DOOR_LV1_SEC) return "DOOR_NOTICE";
-  }
-
-  return "NONE";
-}
-
-// ==================== HAM DIEU KHIEN LED + COI ====================
-void updateOutputs(int level) {
-  if (TEST_ALL_LEDS_ON) {
-    digitalWrite(PIN_LED_GREEN, HIGH);
-    digitalWrite(PIN_LED_YELLOW, HIGH);
-    digitalWrite(PIN_LED_RED, HIGH);
-    ledGreenState = ledYellowState = ledRedState = true;
-    return;
-  }
-
-  // Tat het truoc
-  ledGreenState  = false;
-  ledYellowState = false;
-  ledRedState    = false;
-  buzzerActive   = false;
-
-  switch (level) {
-    case 3:
-      ledRedState  = true;
-      buzzerActive = true;
-      break;
-    case 2:
-      ledYellowState = true;
-      break;
-    case 1:
-      ledGreenState = true;
-      break;
-    default:
-      // Muc 0: tat het -> binh thuong
-      break;
-  }
-
-  digitalWrite(PIN_LED_GREEN,  ledGreenState  ? HIGH : LOW);
-  digitalWrite(PIN_LED_YELLOW, ledYellowState ? HIGH : LOW);
-  digitalWrite(PIN_LED_RED,    ledRedState    ? HIGH : LOW);
-
-  // Coi: keu ngat quang khi muc 3
-  if (PIN_BUZZER >= 0) {
-    if (buzzerActive) {
-      // Keu ngat quang moi 500ms
-      if (millis() - lastBuzzerToggle >= 500) {
-        lastBuzzerToggle = millis();
-        buzzerTone = !buzzerTone;
-        digitalWrite(PIN_BUZZER, buzzerTone ? HIGH : LOW);
-      }
-    } else {
-      digitalWrite(PIN_BUZZER, LOW);
-      buzzerTone = false;
-    }
-  }
-}
-
-// ==================== GUI DU LIEU LEN FIREBASE ====================
-void sendSensorData() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[FIREBASE] WiFi chua ket noi, bo qua.");
-    return;
-  }
-
-  // JSON khop voi Web Dashboard (app.js onValue listener)
-  // Fields: temperature_c, humidity, door_status, door_open_sec, alarm, sensor_id, timestamp
-  String json = "{";
-  json += "\"temperature_c\":" + String(currentTemp, 1) + ",";
-  json += "\"humidity\":" + String(currentHum, 1) + ",";
-  json += "\"door_status\":\"" + String(isDoorOpen ? "OPEN" : "CLOSED") + "\",";
-  json += "\"door_open_sec\":" + String(doorOpenDurationSec) + ",";
-  json += "\"alarm\":\"" + alarmString + "\",";
-  json += "\"sensor_id\":\"" + String(SENSOR_ID) + "\",";
-  json += "\"timestamp\":{\".\u0073v\":\"timestamp\"}";
-  json += "}";
-
-  HTTPClient http;
-  String url = buildFirebaseUrl(FB_PATH_SENSOR);
-
-  http.begin(sslClient, url);
-  http.addHeader("Content-Type", "application/json");
-
-  // PUT de cap nhat /sensor_data
-  int code = http.PUT(json);
-
-  if (code > 0) {
-    Serial.printf("[FIREBASE] sensor_data -> HTTP %d\n", code);
-  } else {
-    Serial.printf("[FIREBASE] Loi gui sensor_data: %s\n", http.errorToString(code).c_str());
-  }
-  http.end();
-}
-
-// ==================== PUSH LICH SU LEN FIREBASE ====================
-void pushHistory() {
-  if (WiFi.status() != WL_CONNECTED) return;
-
-  String json = "{";
-  json += "\"temperature_c\":" + String(currentTemp, 1) + ",";
-  json += "\"humidity\":" + String(currentHum, 1) + ",";
-  json += "\"door_status\":\"" + String(isDoorOpen ? "OPEN" : "CLOSED") + "\",";
-  json += "\"door_open_sec\":" + String(doorOpenDurationSec) + ",";
-  json += "\"alarm\":\"" + alarmString + "\",";
-  json += "\"timestamp\":{\".\u0073v\":\"timestamp\"}";
-  json += "}";
-
-  HTTPClient http;
-  String url = buildFirebaseUrl(FB_PATH_HISTORY);
-
-  http.begin(sslClient, url);
-  http.addHeader("Content-Type", "application/json");
-
-  // POST de tao ban ghi moi (auto-generated key)
-  int code = http.POST(json);
-
-  if (code > 0) {
-    Serial.printf("[FIREBASE] history -> HTTP %d\n", code);
-  } else {
-    Serial.printf("[FIREBASE] Loi push history: %s\n", http.errorToString(code).c_str());
-  }
-  http.end();
-}
-
-// ==================== DOC NGUONG CANH BAO TU FIREBASE ====================
-void readThresholds() {
-  if (WiFi.status() != WL_CONNECTED) return;
-
-  HTTPClient http;
-  String url = buildFirebaseUrl(FB_PATH_THRESHOLDS);
-
-  http.begin(sslClient, url);
-  int code = http.GET();
-
-  if (code == 200) {
-    String payload = http.getString();
-    Serial.println("[FIREBASE] Doc thresholds: " + payload);
-
-    // Parse JSON don gian (khong dung thu vien de tiet kiem RAM)
-    // Cac field: temp_lv1_min, temp_lv1_max, temp_lv2_min, temp_lv2_max,
-    //            temp_lv3_min, temp_lv3_max, door_lv1_sec, door_lv2_sec, door_lv3_sec
-    if (payload != "null" && payload.length() > 5) {
-      float val;
-      if (parseJsonFloat(payload, "temp_lv1_min", val)) TEMP_LV1_MIN = val;
-      if (parseJsonFloat(payload, "temp_lv1_max", val)) TEMP_LV1_MAX = val;
-      if (parseJsonFloat(payload, "temp_lv2_min", val)) TEMP_LV2_MIN = val;
-      if (parseJsonFloat(payload, "temp_lv2_max", val)) TEMP_LV2_MAX = val;
-      if (parseJsonFloat(payload, "temp_lv3_min", val)) TEMP_LV3_MIN = val;
-      if (parseJsonFloat(payload, "temp_lv3_max", val)) TEMP_LV3_MAX = val;
-
-      float doorVal;
-      if (parseJsonFloat(payload, "door_lv1_sec", doorVal)) DOOR_LV1_SEC = (unsigned long)doorVal;
-      if (parseJsonFloat(payload, "door_lv2_sec", doorVal)) DOOR_LV2_SEC = (unsigned long)doorVal;
-      if (parseJsonFloat(payload, "door_lv3_sec", doorVal)) DOOR_LV3_SEC = (unsigned long)doorVal;
-
-      Serial.printf("[NGUONG] Nhiet do: Lv1[%.1f,%.1f] Lv2[%.1f,%.1f] Lv3[%.1f,%.1f]\n",
-                    TEMP_LV1_MIN, TEMP_LV1_MAX, TEMP_LV2_MIN, TEMP_LV2_MAX, TEMP_LV3_MIN, TEMP_LV3_MAX);
-      Serial.printf("[NGUONG] Cua: Lv1=%lus Lv2=%lus Lv3=%lus\n",
-                    DOOR_LV1_SEC, DOOR_LV2_SEC, DOOR_LV3_SEC);
-    }
-  } else if (code > 0) {
-    Serial.printf("[FIREBASE] thresholds HTTP %d\n", code);
-  } else {
-    Serial.printf("[FIREBASE] Loi doc thresholds: %s\n", http.errorToString(code).c_str());
-  }
-  http.end();
-}
-
 // ==================== PARSE JSON DON GIAN ====================
 bool parseJsonFloat(const String& json, const String& key, float& result) {
   String searchKey = "\"" + key + "\":";
@@ -355,7 +218,6 @@ bool parseJsonFloat(const String& json, const String& key, float& result) {
   if (idx < 0) return false;
 
   int start = idx + searchKey.length();
-  // Bo qua khoang trang
   while (start < (int)json.length() && json[start] == ' ') start++;
 
   int end = start;
@@ -370,18 +232,155 @@ bool parseJsonFloat(const String& json, const String& key, float& result) {
   return false;
 }
 
+// ==================== GUI DU LIEU LEN FIREBASE (SENSOR_DATA) ====================
+void sendSensorData() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  float t, h;
+  bool door;
+  unsigned long doorSec;
+  int level;
+
+  portENTER_CRITICAL(&stateMutex);
+  t = currentTemp;
+  h = currentHum;
+  door = isDoorOpen;
+  doorSec = door ? doorOpenDurationSec : 0;
+  level = currentAlertLevel;
+  alarmString = buildAlarmString(level);
+  portEXIT_CRITICAL(&stateMutex);
+
+  String json = "{";
+  json += "\"temperature_c\":" + String(t, 1) + ",";
+  json += "\"humidity\":" + String(h, 1) + ",";
+  json += "\"door_status\":\"" + String(door ? "OPEN" : "CLOSED") + "\",";
+  json += "\"door_open_sec\":" + String(doorSec) + ",";
+  json += "\"alarm\":\"" + alarmString + "\",";
+  json += "\"sensor_id\":\"" + String(SENSOR_ID) + "\",";
+  json += "\"timestamp\":{\".sv\":\"timestamp\"}";
+  json += "}";
+
+  String url = buildFirebaseUrl(FB_PATH_SENSOR);
+
+  if (!httpSensor.connected()) {
+    httpSensor.begin(sslSensor, url);
+    httpSensor.setReuse(true);
+    httpSensor.setConnectTimeout(2500);
+    httpSensor.setTimeout(2500);
+  }
+  httpSensor.addHeader("Content-Type", "application/json");
+
+  int code = httpSensor.PUT(json);
+  if (code > 0) {
+    httpSensor.getString(); // Doc sach phan hoi de giu ket noi san sang cho lan sau
+  } else {
+    Serial.printf("[FIREBASE] Loi gui sensor_data: %s (%d)\n", httpSensor.errorToString(code).c_str(), code);
+    httpSensor.end();
+    sslSensor.stop();
+  }
+}
+
+// ==================== DOC NGUONG CANH BAO TU FIREBASE ====================
+// ==================== PUSH LICH SU LEN FIREBASE (HISTORY) ====================
+void pushHistory() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  float t, h;
+  bool door;
+  unsigned long doorSec;
+  int level;
+
+  portENTER_CRITICAL(&stateMutex);
+  t = currentTemp;
+  h = currentHum;
+  door = isDoorOpen;
+  doorSec = door ? doorOpenDurationSec : 0;
+  level = currentAlertLevel;
+  portEXIT_CRITICAL(&stateMutex);
+
+  String curAlarm = buildAlarmString(level);
+
+  String json = "{";
+  json += "\"temperature_c\":" + String(t, 1) + ",";
+  json += "\"humidity\":" + String(h, 1) + ",";
+  json += "\"door_status\":\"" + String(door ? "OPEN" : "CLOSED") + "\",";
+  json += "\"door_open_sec\":" + String(doorSec) + ",";
+  json += "\"alarm\":\"" + curAlarm + "\",";
+  json += "\"timestamp\":{\".sv\":\"timestamp\"}";
+  json += "}";
+
+  String url = buildFirebaseUrl(FB_PATH_HISTORY);
+  httpAux.begin(sslAux, url);
+  httpAux.setConnectTimeout(2500);
+  httpAux.setTimeout(2500);
+  httpAux.addHeader("Content-Type", "application/json");
+
+  int code = httpAux.POST(json);
+  if (code > 0) {
+    httpAux.getString();
+    Serial.printf("[HISTORY] Ghi lich su -> HTTP %d (Temp: %.1f, Cua: %s)\n", code, t, door ? "OPEN" : "CLOSED");
+  } else {
+    Serial.printf("[HISTORY] Loi ghi lich su: %s\n", httpAux.errorToString(code).c_str());
+    sslAux.stop();
+  }
+  httpAux.end();
+}
+
+void readThresholds() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  String url = buildFirebaseUrl(FB_PATH_THRESHOLDS);
+  httpAux.begin(sslAux, url);
+  httpAux.setConnectTimeout(2500);
+  httpAux.setTimeout(2500);
+
+  int code = httpAux.GET();
+  if (code == 200) {
+    String payload = httpAux.getString();
+
+    if (payload != "null" && payload.length() > 5) {
+      float tmin, tmax, dsec;
+      bool changed = false;
+
+      if (parseJsonFloat(payload, "temp_min", tmin)) {
+        if (TEMP_MIN != tmin) { TEMP_MIN = tmin; changed = true; }
+      }
+      if (parseJsonFloat(payload, "temp_max", tmax)) {
+        if (TEMP_MAX != tmax) { TEMP_MAX = tmax; changed = true; }
+      }
+      if (parseJsonFloat(payload, "door_delay_sec", dsec)) {
+        unsigned long val = (unsigned long)dsec;
+        if (DOOR_DELAY_SEC != val) {
+          DOOR_DELAY_SEC = val;
+          changed = true;
+          Serial.printf("[NGUONG MOI] Cua cho phep: %lu giay\n", DOOR_DELAY_SEC);
+        }
+      }
+
+      if (changed) {
+        Serial.printf("[NGUONG MOI] Temp: [%.1f - %.1f]C | Cua: %lu giay\n", TEMP_MIN, TEMP_MAX, DOOR_DELAY_SEC);
+        portENTER_CRITICAL(&stateMutex);
+        flagNeedPushNow = true;
+        portEXIT_CRITICAL(&stateMutex);
+      }
+    }
+  } else {
+    sslAux.stop();
+  }
+  httpAux.end();
+}
+
 // ==================== SETUP ====================
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(500);
 
   Serial.println("\n========================================================");
-  Serial.println("  HE THONG IOT GIAM SAT KHO LANH (THUNG XOP) - ESP32");
-  Serial.println("  Firebase: sensor_data / history / thresholds");
-  Serial.println("  3 muc canh bao: Xanh(Lv1) Vang(Lv2) Do+Coi(Lv3)");
+  Serial.println("  HE THONG IOT GIAM SAT KHO LANH - ESP32 REAL-TIME");
+  Serial.println("  Trang thai: Binh thuong(Xanh) | Mo cua(Vang) | Nguy hiem(Do+Coi)");
   Serial.println("========================================================\n");
 
-  // GPIO
+  // Cau hinh GPIO
   pinMode(PIN_DOOR_MC38, INPUT_PULLUP);
   pinMode(PIN_LED_GREEN, OUTPUT);
   pinMode(PIN_LED_YELLOW, OUTPUT);
@@ -389,168 +388,149 @@ void setup() {
   pinMode(PIN_LED_ONBOARD, OUTPUT);
   if (PIN_BUZZER >= 0) pinMode(PIN_BUZZER, OUTPUT);
 
-  // Tat het LED ban dau
+  // Khoi tao dau ra
   digitalWrite(PIN_LED_GREEN, LOW);
   digitalWrite(PIN_LED_YELLOW, LOW);
   digitalWrite(PIN_LED_RED, LOW);
   digitalWrite(PIN_LED_ONBOARD, LOW);
   if (PIN_BUZZER >= 0) digitalWrite(PIN_BUZZER, LOW);
 
-  // Test LED neu bat
-  if (TEST_ALL_LEDS_ON) {
-    Serial.println("[TEST] BAT TAT CA LED de kiem tra mach");
-    digitalWrite(PIN_LED_GREEN, HIGH);
-    digitalWrite(PIN_LED_YELLOW, HIGH);
-    digitalWrite(PIN_LED_RED, HIGH);
-    digitalWrite(PIN_LED_ONBOARD, HIGH);
-  }
-
-  // DHT22
+  // Khoi dong DHT22
   dht.begin();
   Serial.println("[DHT22] Da khoi dong cam bien.");
 
-  // SSL (bo qua xac thuc cert)
-  sslClient.setInsecure();
+  // SSL Setup cho 2 kenh
+  sslSensor.setInsecure();
+  sslSensor.setTimeout(3);
+  sslAux.setInsecure();
+  sslAux.setTimeout(3);
 
-  // WiFi
-  Serial.printf("[WIFI] Dang ket noi: %s ", WIFI_SSID);
+  // KHOI TAO TASK PHAN CUNG REAL-TIME (FreeRTOS)
+  // Uu tien cao (Priority 2) de chay ngay ca khi mang dang goi
+  xTaskCreatePinnedToCore(
+    hardwareAlarmTask,
+    "hardwareAlarmTask",
+    4096,
+    NULL,
+    2,    // Priority cao hon loop()
+    NULL,
+    1     // Core 1 (cung core voi Arduino loop nhung uu tien cao hon)
+  );
+  Serial.println("[FREERTOS] Task phan cung real-time da duoc tao (20ms).");
+
+  // Ket noi WiFi
+  Serial.printf("[WIFI] Dang ket noi toi: %s ", WIFI_SSID);
   WiFi.mode(WIFI_STA);
-  if (strlen(WIFI_PASSWORD) > 0) {
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  } else {
-    WiFi.begin(WIFI_SSID);
-  }
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   int retries = 0;
-  while (WiFi.status() != WL_CONNECTED && retries < 30) {
-    delay(500);
+  while (WiFi.status() != WL_CONNECTED && retries < 25) {
+    delay(400);
     Serial.print(".");
     retries++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n[WIFI] Ket noi thanh cong!");
-    Serial.print("[WIFI] IP: ");
-    Serial.println(WiFi.localIP());
+    Serial.println("\n[WIFI] Ket noi thanh cong! IP: " + WiFi.localIP().toString());
     digitalWrite(PIN_LED_ONBOARD, HIGH);
   } else {
-    Serial.println("\n[WIFI] Khong the ket noi! Kiem tra SSID/Password.");
+    Serial.println("\n[WIFI] Chua the ket noi WiFi, se tu dong thu lai.");
   }
 
-  // Doc cam bien lan dau
-  delay(2000); // DHT22 can thoi gian khoi dong
-  float t = dht.readTemperature();
-  float h = dht.readHumidity();
-  if (!isnan(t) && !isnan(h)) {
-    currentTemp = t;
-    currentHum = h;
-    dhtReady = true;
-  }
-  isDoorOpen = readDoorState();
-  lastDoorOpenState = isDoorOpen;
-
-  // Doc nguong tu Firebase
+  // Doc nguong khoi dau
   readThresholds();
 
-  // Gui du lieu dau tien
-  currentAlertLevel = calculateAlertLevel();
-  alarmString = buildAlarmString(currentAlertLevel);
-  updateOutputs(currentAlertLevel);
-  sendSensorData();
-  pushHistory();
-  lastFirebaseSendTime = millis();
+  // Doc cam bien khoi dau de co du lieu ngay lap tuc
+  float initT = dht.readTemperature();
+  float initH = dht.readHumidity();
+  if (!isnan(initT) && !isnan(initH)) {
+    portENTER_CRITICAL(&stateMutex);
+    currentTemp = initT;
+    currentHum  = initH;
+    dhtReady    = true;
+    portEXIT_CRITICAL(&stateMutex);
+    Serial.printf("[DHT22] Khoi dau: Temp=%.1f C, Hum=%.1f %%\n", initT, initH);
+  }
 }
 
-// ==================== LOOP ====================
+// ==================== LOOP (CHAY CAC TAC VU MANG & CAM BIEN) ====================
 void loop() {
   unsigned long now = millis();
 
-  // ---- BUOC 1: Doc DHT22 moi 2 giay ----
-  if (now - lastDhtReadTime >= DHT_READ_INTERVAL) {
-    lastDhtReadTime = now;
+  static unsigned long lastDhtRead = 0;
+  static unsigned long lastSensorPush = 0;
+  static unsigned long lastThresholdRead = 0;
+  static unsigned long lastHistoryPush = 0;
+
+  // 1. Doc DHT22 dinh ky moi 2 giay (LUON CHAY DAU TIEN, KHONG BI CHAN BOI RETURN)
+  if (now - lastDhtRead >= 2000) {
+    lastDhtRead = now;
     float t = dht.readTemperature();
     float h = dht.readHumidity();
 
     if (!isnan(t) && !isnan(h)) {
+      portENTER_CRITICAL(&stateMutex);
       currentTemp = t;
       currentHum  = h;
-      dhtReady = true;
-    } else {
-      Serial.println("[DHT22] Loi doc cam bien!");
+      dhtReady    = true;
+      portEXIT_CRITICAL(&stateMutex);
     }
   }
 
-  // ---- BUOC 2: Quan ly cua MC-38 ----
-  isDoorOpen = readDoorState();
-
-  if (isDoorOpen) {
-    if (!lastDoorOpenState) {
-      // Vua phat hien cua mo
-      doorOpenStartTime = now;
-      doorOpenDurationSec = 0;
-      Serial.println("[CUA] -> CUA BAT DAU MO!");
-      // Gui ngay lap tuc de Web cap nhat realtime
-      currentAlertLevel = calculateAlertLevel();
-      alarmString = buildAlarmString(currentAlertLevel);
-      sendSensorData();
-      lastFirebaseSendTime = now;
-    } else {
-      doorOpenDurationSec = (now - doorOpenStartTime) / 1000;
-    }
-  } else {
-    if (lastDoorOpenState) {
-      // Vua phat hien cua dong
-      Serial.printf("[CUA] -> DA DONG! (mo %lu giay)\n", doorOpenDurationSec);
-      doorOpenDurationSec = 0;
-      // Gui ngay lap tuc
-      currentAlertLevel = calculateAlertLevel();
-      alarmString = buildAlarmString(currentAlertLevel);
-      sendSensorData();
-      lastFirebaseSendTime = now;
-    }
-    doorOpenDurationSec = 0;
-  }
-  lastDoorOpenState = isDoorOpen;
-
-  // ---- BUOC 3: Tinh muc canh bao va dieu khien LED + Coi ----
-  currentAlertLevel = calculateAlertLevel();
-  alarmString = buildAlarmString(currentAlertLevel);
-  updateOutputs(currentAlertLevel);
-
-  // ---- BUOC 4: Gui du lieu dinh ky moi 5 giay ----
-  if (now - lastFirebaseSendTime >= FB_SEND_INTERVAL) {
-    lastFirebaseSendTime = now;
-
-    Serial.println("--------------------------------------------------");
-    Serial.printf("[DATA] Nhiet do: %.1f C | Do am: %.1f%%\n", currentTemp, currentHum);
-    Serial.printf("[DATA] Cua: %s | TG mo: %lus\n", isDoorOpen ? "MO" : "DONG", doorOpenDurationSec);
-    Serial.printf("[DATA] LED: Xanh=%d Vang=%d Do=%d | Coi=%d\n",
-                  ledGreenState, ledYellowState, ledRedState, buzzerActive);
-    Serial.printf("[DATA] Muc canh bao: %d | Alarm: %s\n", currentAlertLevel, alarmString.c_str());
-
+  // 2. UU TIEN SO 1: KHI CUA VUA DOI TRANG THAI (VUA MO / VUA DONG) HOAC ALARM DOI
+  if (flagNeedPushNow) {
+    flagNeedPushNow = false;
+    lastSensorPush = now;
     sendSensorData();
-    pushHistory();
+    delay(10);
+    return;
   }
 
-  // ---- BUOC 5: Doc nguong canh bao tu Firebase moi 30 giay ----
-  if (now - lastThresholdReadTime >= FB_THRESHOLD_INTERVAL) {
-    lastThresholdReadTime = now;
+  // 3. KHI CUA DANG MO:
+  // - Gui sensor_data deu dan moi 1 giay de Firebase & Web nhan dung so giay thuc
+  // - TUYET DOI KHONG doc nguong hay ghi history de socket luon ranh va tap trung cho thoi gian thuc
+  if (isDoorOpen) {
+    if (now - lastSensorPush >= 1000) {
+      lastSensorPush = now;
+      sendSensorData();
+    }
+    delay(10);
+    return;
+  }
+
+  // 4. KHI CUA DONG (Trang thai ranh roi):
+  // - Gui heartbeat sensor_data moi 3 giay de giu song ket noi va cap nhat nhiet do
+  if (now - lastSensorPush >= 3000) {
+    lastSensorPush = now;
+    sendSensorData();
+  }
+
+  // 5. Doc nguong tu Firebase (CHI DOC KHI CUA DONG, moi 10 giay)
+  if (now - lastThresholdRead >= 10000) {
+    lastThresholdRead = now;
     readThresholds();
   }
 
-  // ---- Reconnect WiFi neu mat ket noi ----
+  // 6. Ghi lich su (CHI GHI KHI CUA DONG, dinh ky 15 giay 1 lan de khong nghen mang)
+  if (now - lastHistoryPush >= 15000) {
+    lastHistoryPush = now;
+    pushHistory();
+  }
+
+  // 7. Kiem tra ket noi WiFi
   if (WiFi.status() != WL_CONNECTED) {
-    static unsigned long lastReconnect = 0;
-    if (now - lastReconnect >= 10000) {
-      lastReconnect = now;
-      Serial.println("[WIFI] Mat ket noi, dang thu lai...");
+    digitalWrite(PIN_LED_ONBOARD, LOW);
+    static unsigned long lastWifiRetry = 0;
+    if (now - lastWifiRetry >= 8000) {
+      lastWifiRetry = now;
+      Serial.println("[WIFI] Mat ket noi, dang thu ket noi lai...");
       WiFi.disconnect();
-      WiFi.begin(WIFI_SSID, strlen(WIFI_PASSWORD) > 0 ? WIFI_PASSWORD : NULL);
-      digitalWrite(PIN_LED_ONBOARD, LOW);
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     }
   } else {
     digitalWrite(PIN_LED_ONBOARD, HIGH);
   }
 
-  delay(50);
+  delay(20);
 }
+

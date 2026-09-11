@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
@@ -19,12 +19,9 @@
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
-            <svg class="brand-icon" viewBox="0 0 40 40" fill="none">
-                <rect x="2" y="2" width="36" height="36" rx="8" stroke="currentColor" stroke-width="2.5"/>
-                <path d="M20 8v24M14 14l6-6 6 6M14 26l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+            <img src="assets/imgs/logo.png" class="brand-logo" alt="Logo CTU">
             <div class="brand-text">
-                <span class="brand-name">ColdVault</span>
+                <span class="brand-name">IOT SYSTEMS</span>
                 <span class="brand-sub">IoT Monitor</span>
             </div>
         </div>
@@ -89,7 +86,10 @@
                     <line x1="3" y1="18" x2="21" y2="18"/>
                 </svg>
             </button>
-            <span class="mobile-title">ColdVault</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <img src="assets/imgs/logo.png" class="brand-logo" style="width:26px;height:26px;" alt="Logo CTU">
+                <span class="mobile-title">IOT SYSTEMS</span>
+            </div>
             <div class="mobile-status">
                 <span class="status-dot offline" id="mobileStatusDot"></span>
             </div>
@@ -384,7 +384,7 @@
             </div>
 
             <div class="control-grid">
-                <!-- Temperature Thresholds - 3 levels -->
+                <!-- Temperature Thresholds -->
                 <div class="card control-card">
                     <div class="card-header">
                         <svg class="card-icon temp-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -393,43 +393,28 @@
                         <span class="card-label">Ngưỡng nhiệt độ</span>
                     </div>
                     <div class="control-form">
-                        <div class="form-section-label lv1-label">Mức 1 (LED xanh lá)</div>
+                        <div class="form-section-label">Giới hạn an toàn</div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label class="form-label">Dưới (&deg;C)</label>
-                                <input type="number" class="form-input" id="tempLv1Min" value="2" step="0.5">
+                                <div class="slider-container">
+                                    <input type="range" id="slider_tempMin" class="form-slider" min="-30" max="60" step="0.5" value="2" >
+                                    <input type="number" class="form-input number-with-slider" id="tempMin" value="2" step="0.5" >
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Trên (&deg;C)</label>
-                                <input type="number" class="form-input" id="tempLv1Max" value="8" step="0.5">
+                                <div class="slider-container">
+                                    <input type="range" id="slider_tempMax" class="form-slider" min="-30" max="60" step="0.5" value="8" >
+                                    <input type="number" class="form-input number-with-slider" id="tempMax" value="8" step="0.5" >
+                                </div>
                             </div>
                         </div>
-                        <div class="form-section-label warning-label">Mức 2 (LED vàng)</div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Dưới (&deg;C)</label>
-                                <input type="number" class="form-input" id="tempLv2Min" value="0" step="0.5">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Trên (&deg;C)</label>
-                                <input type="number" class="form-input" id="tempLv2Max" value="10" step="0.5">
-                            </div>
-                        </div>
-                        <div class="form-section-label danger-label">Mức 3 (LED đỏ + Còi)</div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Dưới (&deg;C)</label>
-                                <input type="number" class="form-input" id="tempLv3Min" value="-2" step="0.5">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Trên (&deg;C)</label>
-                                <input type="number" class="form-input" id="tempLv3Max" value="15" step="0.5">
-                            </div>
-                        </div>
+                        <span class="form-hint" style="margin-top: 10px; display: block;">Nhiệt độ vượt khỏi khoảng an toàn này sẽ lập tức báo động Cần xử lý (Đèn đỏ + Còi).</span>
                     </div>
                 </div>
 
-                <!-- Door Threshold - 3 levels -->
+                <!-- Door Threshold -->
                 <div class="card control-card">
                     <div class="card-header">
                         <svg class="card-icon door-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -441,22 +426,13 @@
                     </div>
                     <div class="control-form">
                         <div class="form-group">
-                            <div class="form-section-label lv1-label">Mức 1 (LED xanh lá)</div>
-                            <label class="form-label">Thời gian mở (giây)</label>
-                            <input type="number" class="form-input" id="doorLv1Sec" value="30" step="1" min="5">
-                            <span class="form-hint">Cửa vừa mở, ghi nhận</span>
-                        </div>
-                        <div class="form-group">
-                            <div class="form-section-label warning-label">Mức 2 (LED vàng)</div>
-                            <label class="form-label">Thời gian mở (giây)</label>
-                            <input type="number" class="form-input" id="doorLv2Sec" value="60" step="1" min="10">
-                            <span class="form-hint">Mở cửa ngắn ~ 0.5-1 phút</span>
-                        </div>
-                        <div class="form-group">
-                            <div class="form-section-label danger-label">Mức 3 (LED đỏ + Còi)</div>
-                            <label class="form-label">Thời gian mở (giây)</label>
-                            <input type="number" class="form-input" id="doorLv3Sec" value="120" step="1" min="15">
-                            <span class="form-hint">Mở cửa lâu ~ 2-3 phút</span>
+                            <div class="form-section-label danger-label">Thời gian cho phép mở</div>
+                            <label class="form-label">Thời gian mở tối đa (giây)</label>
+                            <div class="slider-container">
+                                <input type="range" id="slider_doorDelaySec" class="form-slider" min="5" max="3600" step="1" value="10" >
+                                <input type="number" class="form-input number-with-slider" id="doorDelaySec" value="10" step="1" min="5" >
+                            </div>
+                            <span class="form-hint">Quá thời gian này sẽ báo Cần Xử Lý (Đèn Đỏ + Còi)</span>
                         </div>
                     </div>
                 </div>
@@ -515,13 +491,15 @@
 
         <!-- ===== TAB 5: ABOUT ===== -->
         <section class="tab-content" id="tab-about">
-            <div class="tab-header">
-                <h2>Giới thiệu</h2>
-                <p>Hệ thống IOT giám sát kho lạnh - Hướng dẫn sử dụng</p>
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Giới thiệu hệ thống</h1>
+                    <p class="page-subtitle">Hệ thống IOT Giám sát Kho lạnh - ESP32 & Firebase</p>
+                </div>
             </div>
 
-            <div class="about-content">
-                <!-- Project Overview -->
+            <div class="about-grid">
+                <!-- Project Description -->
                 <div class="card about-card">
                     <div class="about-section-title">
                         <svg class="about-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -568,7 +546,7 @@
                     </div>
                 </div>
 
-                <!-- 3-Level Alert Explanation -->
+                <!-- Operational States Explanation -->
                 <div class="card about-card">
                     <div class="about-section-title">
                         <svg class="about-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -576,108 +554,38 @@
                             <line x1="12" y1="9" x2="12" y2="13"/>
                             <line x1="12" y1="17" x2="12.01" y2="17"/>
                         </svg>
-                        <h3>Hệ thống 3 mức cảnh báo</h3>
+                        <h3>Trạng thái hoạt động & Cảnh báo</h3>
                     </div>
                     <div class="about-body">
-                        <p>Hệ thống sử dụng <strong>3 đèn LED</strong> tương ứng với 3 mức độ cảnh báo. Mức cảnh báo được xác định dựa trên <strong>nhiệt độ</strong> và <strong>thời gian mở cửa</strong>. Mức nào cao nhất sẽ được kích hoạt (chỉ 1 đèn sáng tại 1 thời điểm).</p>
+                        <p>Hệ thống giám sát và phản hồi thời gian thực với 3 trạng thái hoạt động rõ ràng, điều khiển trực tiếp đèn LED và còi báo:</p>
 
                         <div class="alert-level-cards">
                             <div class="alert-level-card level-ok">
                                 <div class="level-header">
-                                    <div class="level-led off"></div>
-                                    <span class="level-name">BÌNH THƯỜNG</span>
-                                </div>
-                                <p>Tất cả chỉ số trong ngưỡng an toàn. Không đèn nào sáng.</p>
-                                <div class="level-example">Ví dụ: Nhiệt độ 5&deg;C, cửa đóng</div>
-                            </div>
-
-                            <div class="alert-level-card level-1">
-                                <div class="level-header">
                                     <div class="level-led green"></div>
-                                    <span class="level-name">MỨC 1 - LED XANH LÁ</span>
+                                    <span class="level-name">BÌNH THƯỜNG - ĐÈN XANH</span>
                                 </div>
-                                <p>Chỉ số bắt đầu lệch khỏi vùng an toàn. Cần theo dõi.</p>
-                                <div class="level-example">Ví dụ: Nhiệt độ 9&deg;C (vượt ngưỡng mức 1 = 8&deg;C) hoặc cửa mở > 30 giây</div>
+                                <p>Cửa đóng (CLOSED) <strong>VÀ</strong> Nhiệt độ trong khoảng an toàn (temp_min &le; Nhiệt độ &le; temp_max).</p>
+                                <div class="level-example">Ví dụ: Nhiệt độ 5&deg;C, cửa đóng kín.</div>
                             </div>
 
                             <div class="alert-level-card level-2">
                                 <div class="level-header">
                                     <div class="level-led yellow"></div>
-                                    <span class="level-name">MỨC 2 - LED VÀNG</span>
+                                    <span class="level-name">ĐANG MỞ CỬA - ĐÈN VÀNG</span>
                                 </div>
-                                <p>Chỉ số lệch nhiều hơn. Cần xử lý sớm.</p>
-                                <div class="level-example">Ví dụ: Nhiệt độ 11&deg;C (vượt ngưỡng mức 2 = 10&deg;C) hoặc cửa mở > 60 giây</div>
+                                <p>Cửa đang mở (&gt; 0s), chưa vượt quá thời gian cài đặt, nhiệt độ còn an toàn. Hiển thị thời gian mở cửa.</p>
+                                <div class="level-example">Ví dụ: Cửa mở 5s (ngưỡng cho phép 10s).</div>
                             </div>
 
                             <div class="alert-level-card level-3">
                                 <div class="level-header">
                                     <div class="level-led red"></div>
-                                    <span class="level-name">MỨC 3 - LED ĐỎ + CÒI BÁO</span>
+                                    <span class="level-name">CẦN XỬ LÝ - ĐÈN ĐỎ + CÒI</span>
                                 </div>
-                                <p>Nguy hiểm! Cần hành động ngay. Còi báo kêu.</p>
-                                <div class="level-example">Ví dụ: Nhiệt độ 16&deg;C (vượt ngưỡng mức 3 = 15&deg;C) hoặc cửa mở > 120 giây</div>
+                                <p>Cửa mở quá lâu (&ge; thời gian cài đặt) <strong>HOẶC</strong> Nhiệt độ vượt ngưỡng an toàn (báo động tức thì).</p>
+                                <div class="level-example">Ví dụ: Cửa mở &ge; 10s HOẶC nhiệt độ &gt; 8&deg;C / &lt; 2&deg;C.</div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- How to Set Thresholds -->
-                <div class="card about-card">
-                    <div class="about-section-title">
-                        <svg class="about-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="3"/>
-                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                        </svg>
-                        <h3>Hướng dẫn cài đặt ngưỡng cảnh báo</h3>
-                    </div>
-                    <div class="about-body">
-                        <p>Mỗi mức cảnh báo có 2 giá trị: <strong>"Dưới"</strong> (nhiệt độ thấp nhất cho phép) và <strong>"Trên"</strong> (nhiệt độ cao nhất cho phép). Khi nhiệt độ nằm ngoài khoảng [Dưới, Trên] của mức nào thì mức đó sẽ được kích hoạt.</p>
-
-                        <div class="threshold-diagram">
-                            <div class="diagram-title">SƠ ĐỒ NGƯỠNG NHIỆT ĐỘ (MẶC ĐỊNH)</div>
-                            <div class="diagram-bar">
-                                <div class="bar-zone danger-zone left" style="width:12%">
-                                    <span>&lt; -2&deg;C</span>
-                                    <small>Mức 3</small>
-                                </div>
-                                <div class="bar-zone warning-zone left" style="width:8%">
-                                    <span>-2~0</span>
-                                    <small>Mức 2</small>
-                                </div>
-                                <div class="bar-zone lv1-zone left" style="width:8%">
-                                    <span>0~2</span>
-                                    <small>Mức 1</small>
-                                </div>
-                                <div class="bar-zone safe-zone" style="width:24%">
-                                    <span>2 ~ 8&deg;C</span>
-                                    <small>An toàn</small>
-                                </div>
-                                <div class="bar-zone lv1-zone right" style="width:8%">
-                                    <span>8~10</span>
-                                    <small>Mức 1</small>
-                                </div>
-                                <div class="bar-zone warning-zone right" style="width:16%">
-                                    <span>10~15</span>
-                                    <small>Mức 2</small>
-                                </div>
-                                <div class="bar-zone danger-zone right" style="width:24%">
-                                    <span>&gt; 15&deg;C</span>
-                                    <small>Mức 3</small>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="example-box">
-                            <div class="example-title">VÍ DỤ THỰC TẾ</div>
-                            <p>Nhiệt độ hiện tại là <strong>32&deg;C</strong>. Bạn muốn:</p>
-                            <ul>
-                                <li>Trên <strong>30&deg;C</strong> &rarr; bật LED xanh (mức 1): Đặt <strong>"Trên"</strong> của Mức 1 = <strong>30</strong></li>
-                                <li>Trên <strong>33&deg;C</strong> &rarr; bật LED vàng (mức 2): Đặt <strong>"Trên"</strong> của Mức 2 = <strong>33</strong></li>
-                                <li>Trên <strong>36&deg;C</strong> &rarr; bật LED đỏ + còi (mức 3): Đặt <strong>"Trên"</strong> của Mức 3 = <strong>36</strong></li>
-                            </ul>
-                            <p>Khi nhiệt độ = 32&deg;C &rarr; vuot Mức 1 (30) nhung chua den Mức 2 (33) &rarr; <strong>LED xanh sáng</strong>.</p>
-                            <p>Khi nhiệt độ tang len 34&deg;C &rarr; vuot Mức 2 (33) &rarr; <strong>LED vàng sáng</strong> (xanh tắt).</p>
-                            <p>Khi nhiệt độ tang len 37&deg;C &rarr; vuot Mức 3 (36) &rarr; <strong>LED đỏ sáng + còi kêu</strong>.</p>
                         </div>
                     </div>
                 </div>
@@ -689,90 +597,46 @@
                             <circle cx="12" cy="12" r="10"/>
                             <polyline points="12 6 12 12 16 14"/>
                         </svg>
-                        <h3>Tại sao có độ trễ giữa Web và LED?</h3>
+                        <h3>Thời gian gửi nhận dữ liệu 2 chiều từ server và ESP32</h3>
                     </div>
                     <div class="about-body">
                         <div class="sync-flow">
                             <div class="sync-step">
                                 <div class="sync-number">1</div>
                                 <div class="sync-detail">
-                                    <strong>Ban bam "Lưu cài đặt" tren Web</strong>
-                                    <p>Ngưỡng được lưu vào Firebase. Web kiểm tra ngay lập tức và hiển thị cảnh báo trên màn hình (nếu vượt ngưỡng).</p>
+                                    <strong>Bạn chỉnh thanh trượt trên Web</strong>
+                                    <p>Ngưỡng tự động lưu và đồng bộ tức thì lên Firebase Realtime Database.</p>
                                 </div>
                                 <div class="sync-time">Ngay lập tức</div>
                             </div>
                             <div class="sync-step">
                                 <div class="sync-number">2</div>
                                 <div class="sync-detail">
-                                    <strong>ESP32 đọc ngưỡng mới từ Firebase</strong>
-                                    <p>ESP32 kiểm tra ngưỡng trên Firebase định kỳ mỗi 3 giây. Sau khi đọc được ngưỡng mới, ESP32 sẽ tính lại mức cảnh báo.</p>
+                                    <strong>ESP32 cập nhật ngưỡng mới từ Firebase</strong>
+                                    <p>ESP32 đọc ngưỡng từ Firebase, áp dụng ngay vào luồng giám sát thời gian thực.</p>
                                 </div>
-                                <div class="sync-time">~ 3 giây</div>
+                                <div class="sync-time">~ 1-2 giây</div>
                             </div>
                             <div class="sync-step">
                                 <div class="sync-number">3</div>
                                 <div class="sync-detail">
-                                    <strong>ESP32 gửi dữ liệu mới lên Firebase</strong>
-                                    <p>ESP32 gửi dữ liệu cảm biến + trạng thái cảnh báo mới lên Firebase mỗi 5 giây. Lúc này LED sẽ sáng theo mức mới.</p>
+                                    <strong>ESP32 kiểm tra phần cứng & cảnh báo tức thì</strong>
+                                    <p>Luồng phần cứng chạy chu kỳ 20ms, khi cửa mở chạm mốc quy định là bật Đèn Đỏ + Còi ngay lập tức không trễ.</p>
                                 </div>
-                                <div class="sync-time">~ 5 giây</div>
+                                <div class="sync-time">Tức thì (20ms)</div>
                             </div>
                             <div class="sync-step">
                                 <div class="sync-number">4</div>
                                 <div class="sync-detail">
-                                    <strong>Web nhận dữ liệu từ ESP32</strong>
-                                    <p>Web cập nhật trạng thái cảnh báo chính xác từ ESP32 (bao gồm trạng thái LED và còi).</p>
+                                    <strong>Web đồng bộ trạng thái thực tế</strong>
+                                    <p>Web hiển thị chính xác trạng thái cảm biến, đèn LED và còi báo.</p>
                                 </div>
-                                <div class="sync-time">Ngay lập tức</div>
-                            </div>
-                        </div>
-                        <div class="sync-summary">
-                            <strong>Tóm tắt:</strong> Sau khi bấm Lưu, đợi tối đa <strong>~3-5 giây</strong> để LED trên ESP32 cập nhật theo ngưỡng mới. Web sẽ hiện cảnh báo ngay nhưng LED cần chờ ESP32 đồng bộ.
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Test Scenarios -->
-                <div class="card about-card">
-                    <div class="about-section-title">
-                        <svg class="about-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="9 11 12 14 22 4"/>
-                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-                        </svg>
-                        <h3>Các tình huống thực nghiệm</h3>
-                    </div>
-                    <div class="about-body">
-                        <div class="scenario-table">
-                            <div class="scenario-row header">
-                                <div class="scenario-col">Tình huống</div>
-                                <div class="scenario-col">Thao tác</div>
-                                <div class="scenario-col">Kết quả</div>
-                            </div>
-                            <div class="scenario-row">
-                                <div class="scenario-col"><strong>Bình thường</strong></div>
-                                <div class="scenario-col">Đóng nắp thùng, để đá gel bên trong</div>
-                                <div class="scenario-col">Nhiệt độ giam và on dinh, không đèn nào sáng</div>
-                            </div>
-                            <div class="scenario-row">
-                                <div class="scenario-col"><strong>Mở cửa ngắn</strong></div>
-                                <div class="scenario-col">Mở nắp khoảng 0.5-1 phút</div>
-                                <div class="scenario-col">Dashboard ghi nhận cửa mở, nhiệt độ tăng nhẹ, LED xanh/vàng sáng</div>
-                            </div>
-                            <div class="scenario-row">
-                                <div class="scenario-col"><strong>Mở cửa lâu</strong></div>
-                                <div class="scenario-col">Mở nắp khoảng 2-3 phút</div>
-                                <div class="scenario-col">Cảnh báo "Cửa mở quá lâu", LED đỏ sáng + còi kêu</div>
-                            </div>
-                            <div class="scenario-row">
-                                <div class="scenario-col"><strong>Mất lạnh</strong></div>
-                                <div class="scenario-col">Lấy đá gel ra hoặc mở nắp lâu</div>
-                                <div class="scenario-col">Nhiệt độ vuot nguong, LED đỏ sáng + còi kêu</div>
+                                <div class="sync-time">Realtime</div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </section>
+            </div></section>
 
     </main>
 
