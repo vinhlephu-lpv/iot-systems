@@ -84,6 +84,8 @@ volatile bool flagDoorJustClosed    = false;
 volatile bool flagTempBecameHigh    = false;
 volatile bool flagTempBecameLow     = false;
 volatile bool flagTempRecovered     = false;
+volatile bool lastTempHigh          = false;
+volatile bool lastTempLow           = false;
 
 // Mutex de bao ve du lieu chia se giua 2 Task
 portMUX_TYPE stateMutex = portMUX_INITIALIZER_UNLOCKED;
@@ -118,26 +120,20 @@ void updateOutputs(int level) {
   bool r = (level == 2);
   bool b = (level == 2);
 
-  if (ledGreenState != g) {
-    ledGreenState = g;
-    digitalWrite(PIN_LED_GREEN, g ? HIGH : LOW);
-  }
-  if (ledYellowState != y) {
-    ledYellowState = y;
-    digitalWrite(PIN_LED_YELLOW, y ? HIGH : LOW);
-  }
-  if (ledRedState != r) {
-    ledRedState = r;
-    digitalWrite(PIN_LED_RED, r ? HIGH : LOW);
-  }
-  if (PIN_BUZZER >= 0 && buzzerActive != b) {
-    buzzerActive = b;
-    #if ENABLE_BUZZER
-    digitalWrite(PIN_BUZZER, b ? HIGH : LOW);
-    #else
-    digitalWrite(PIN_BUZZER, LOW); // Luon giu muc LOW de tat coi
-    #endif
-  }
+  digitalWrite(PIN_LED_GREEN, g ? HIGH : LOW);
+  digitalWrite(PIN_LED_YELLOW, y ? HIGH : LOW);
+  digitalWrite(PIN_LED_RED, r ? HIGH : LOW);
+
+  ledGreenState = g;
+  ledYellowState = y;
+  ledRedState = r;
+  buzzerActive = b;
+
+  #if ENABLE_BUZZER
+  if (PIN_BUZZER >= 0) digitalWrite(PIN_BUZZER, b ? HIGH : LOW);
+  #else
+  if (PIN_BUZZER >= 0) digitalWrite(PIN_BUZZER, LOW); // Luon giu muc LOW de tat coi
+  #endif
 }
 
 // ==================== HAM TAO CHUOI ALARM ====================
@@ -167,8 +163,6 @@ void hardwareAlarmTask(void *pvParameters) {
     portENTER_CRITICAL(&stateMutex);
 
     static bool doorDelayExceeded = false;
-    static bool lastTempHigh = false;
-    static bool lastTempLow  = false;
 
     // 1. Kiem tra thay doi cua
     if (doorNow) {
@@ -465,10 +459,17 @@ void readThresholds() {
       if (changed) {
         Serial.printf("[NGUONG MOI] Temp: [%.1f - %.1f]C | Cua: %lu giay\n", TEMP_MIN, TEMP_MAX, DOOR_DELAY_SEC);
         portENTER_CRITICAL(&stateMutex);
-        flagNeedPushNow = true;
-        // Cap nhat phan ung den LED ngay tuc khac khi nguong thay doi!
+
         bool isTempAlert = dhtReady && (currentTemp < TEMP_MIN || currentTemp > TEMP_MAX);
         bool isDoorTooLong = isDoorOpen && (doorOpenDurationSec >= DOOR_DELAY_SEC);
+
+        // Kiem tra neu he thong vua tro ve an toan tu canh bao nhiet do
+        if ((currentAlertLevel == 2 || lastTempHigh || lastTempLow) && !isTempAlert && !isDoorTooLong) {
+          lastTempHigh = false;
+          lastTempLow = false;
+          flagTempRecovered = true;
+        }
+
         if (isTempAlert || isDoorTooLong) {
           currentAlertLevel = 2;
         } else if (isDoorOpen) {
@@ -476,8 +477,10 @@ void readThresholds() {
         } else {
           currentAlertLevel = 0;
         }
-        portEXIT_CRITICAL(&stateMutex);
+
+        flagNeedPushNow = true;
         updateOutputs(currentAlertLevel);
+        portEXIT_CRITICAL(&stateMutex);
       }
     }
   } else {
