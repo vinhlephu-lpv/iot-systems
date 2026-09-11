@@ -280,27 +280,20 @@
         };
         state.activeAlerts.set(key, alert);
 
-        // Hiển thị ngay tức thì vào bảng Lịch sử cảnh báo trên giao diện
-        const isDuplicate = state.alertHistory.some(a => (a.id === key && !a.resolvedAt) || (Math.abs(a.timestamp.getTime() - alert.timestamp.getTime()) < 3000 && a.message === alert.message));
-        if (!isDuplicate) {
-            state.alertHistory.unshift({
-                ...alert,
-                resolvedAt: null
-            });
+        // Khi khong co Firebase (mo phong), them cuc bo vao alertHistory
+        // Khi co Firebase, toan bo ban ghi lich su chuan xac duoc nhan tu Firebase /alerts do ESP32 gui ve
+        if (!state.firebaseReady) {
+            const isDuplicate = state.alertHistory.some(a => (a.id === key && !a.resolvedAt) || (Math.abs(a.timestamp.getTime() - alert.timestamp.getTime()) < 3000 && a.message === alert.message));
+            if (!isDuplicate) {
+                state.alertHistory.unshift({
+                    ...alert,
+                    resolvedAt: null
+                });
 
-            if (state.alertHistory.length > 500) {
-                state.alertHistory.pop();
+                if (state.alertHistory.length > 500) {
+                    state.alertHistory.pop();
+                }
             }
-        }
-
-        // Lưu trực tiếp lên Firebase /alerts để F5 VĨNH VIỄN KHÔNG BAO GIỜ MẤT
-        if (state.firebaseReady && state.db) {
-            state.db.ref(DB_PATHS.alerts).push({
-                type: type,
-                severity: severity,
-                message: message,
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
         }
 
         updateAlertDisplays();
@@ -308,39 +301,12 @@
 
     function clearAlertByKey(key) {
         let changed = false;
-        const alertsToClear = [];
         state.activeAlerts.forEach((alert, k) => {
             if (k === key || k.startsWith(key + '-') || alert.type === key) {
-                alertsToClear.push(alert);
-            }
-        });
-
-        alertsToClear.forEach(alert => {
-            const k = alert.id;
-            state.activeAlerts.delete(k);
-            const histItem = state.alertHistory.find(h => h.id === k && !h.resolvedAt);
-            if (histItem) histItem.resolvedAt = new Date();
-            changed = true;
-
-            // Ghi nhận sự kiện phục hồi (an toàn) lên Firebase /alerts
-            if (state.firebaseReady && state.db) {
-                let resolvedMsg = '';
-                if (alert.type.startsWith('temp')) {
-                    resolvedMsg = `Nhiệt độ đã trở lại an toàn (${state.temperature !== null ? state.temperature.toFixed(1) : ''}°C)`;
-                } else if (alert.type === 'door') {
-                    resolvedMsg = 'Cửa đã đóng';
-                }
-                if (resolvedMsg) {
-                    const isDupSafe = state.alertHistory.some(a => Math.abs(a.timestamp.getTime() - Date.now()) < 4000 && a.message === resolvedMsg);
-                    if (!isDupSafe) {
-                        state.db.ref(DB_PATHS.alerts).push({
-                            type: alert.type,
-                            severity: 'ok',
-                            message: resolvedMsg,
-                            timestamp: firebase.database.ServerValue.TIMESTAMP
-                        });
-                    }
-                }
+                state.activeAlerts.delete(k);
+                const histItem = state.alertHistory.find(h => h.id === k && !h.resolvedAt);
+                if (histItem) histItem.resolvedAt = new Date();
+                changed = true;
             }
         });
 
@@ -1297,7 +1263,7 @@
                     timestamp: new Date(data.timestamp || Date.now())
                 };
 
-                const isDuplicate = state.alertHistory.some(a => (a.key && a.key === snapshot.key) || (Math.abs(a.timestamp.getTime() - record.timestamp.getTime()) < 3000 && a.message === record.message));
+                const isDuplicate = state.alertHistory.some(a => a.key && a.key === snapshot.key);
                 if (!isDuplicate) {
                     state.alertHistory.unshift(record);
                     state.alertHistory.sort((a, b) => b.timestamp - a.timestamp);
@@ -1305,9 +1271,6 @@
                         state.alertHistory.pop();
                     }
                     renderAlertsTable();
-                } else {
-                    const existing = state.alertHistory.find(a => (!a.key || a.key === snapshot.key) && Math.abs(a.timestamp.getTime() - record.timestamp.getTime()) < 3000 && a.message === record.message);
-                    if (existing && !existing.key) existing.key = snapshot.key;
                 }
             }
         });
