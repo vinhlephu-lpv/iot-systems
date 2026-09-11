@@ -471,10 +471,6 @@
                             <span class="info-value">ESP32 Dev Module</span>
                         </div>
                         <div class="info-row">
-                            <span class="info-label">Tần suất đo</span>
-                            <span class="info-value">5 giây</span>
-                        </div>
-                        <div class="info-row">
                             <span class="info-label">Firebase</span>
                             <span class="info-value" id="sysConnectionInfo">Chờ kết nối</span>
                         </div>
@@ -485,6 +481,59 @@
                         <div class="info-row">
                             <span class="info-label">Phiên bản</span>
                             <span class="info-value">1.0.0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quy tắc & Cơ chế cảnh báo -->
+                <div class="card control-card">
+                    <div class="card-header">
+                        <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                        </svg>
+                        <span class="card-label">Quy tắc & Cơ chế cảnh báo</span>
+                    </div>
+                    <div class="system-info">
+                        <div class="info-row">
+                            <span class="info-label" style="display: flex; align-items: center; gap: 8px;">
+                                <span style="background: #10b981; width: 9px; height: 9px; border-radius: 50%; display: inline-block;"></span>
+                                Bình thường (An toàn)
+                            </span>
+                            <span class="info-value" style="color: #10b981;">LED Xanh (Còi tắt)</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label" style="display: flex; align-items: center; gap: 8px;">
+                                <span style="background: #f59e0b; width: 9px; height: 9px; border-radius: 50%; display: inline-block;"></span>
+                                Đang mở cửa (&lt; ngưỡng)
+                            </span>
+                            <span class="info-value" style="color: #f59e0b;">LED Vàng (Đếm giây)</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label" style="display: flex; align-items: center; gap: 8px;">
+                                <span style="background: #ef4444; width: 9px; height: 9px; border-radius: 50%; display: inline-block;"></span>
+                                Cần xử lý (Báo động)
+                            </span>
+                            <span class="info-value" style="color: #ef4444;">LED Đỏ + Còi Buzzer</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Cửa mở quá lâu</span>
+                            <span class="info-value">&ge; thời gian cài đặt</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Nhiệt độ vi phạm</span>
+                            <span class="info-value">&lt; T.Min hoặc &gt; T.Max</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Tần suất ghi lịch sử</span>
+                            <span class="info-value">5 giây / lần</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Phản xạ phần cứng</span>
+                            <span class="info-value">Tức thì (FreeRTOS 20ms)</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Đồng bộ cấu hình</span>
+                            <span class="info-value">Tự động qua Cloud Firebase</span>
                         </div>
                     </div>
                 </div>
