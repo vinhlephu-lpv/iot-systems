@@ -312,11 +312,14 @@ body {
 .main-content {
     margin-left: var(--sidebar-width);
     min-height: 100vh;
+    display: flex;
+    flex-direction: column;
     transition: margin-left var(--transition);
 }
 
 .tab-content {
     display: none;
+    flex: 1;
     padding: 28px 32px 40px;
     animation: fadeIn 0.3s ease;
 }
@@ -1871,4 +1874,19 @@ body {
     font-family: inherit;
     background: none;
     padding: 0;
+}
+
+/* ========================================
+   App Footer
+   ======================================== */
+.app-footer {
+    text-align: center;
+    padding: 20px 24px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-dark);
+    letter-spacing: 0.05em;
+    opacity: 0.75;
+    margin-top: auto;
+    user-select: none;
 }
