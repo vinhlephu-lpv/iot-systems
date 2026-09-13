@@ -17,8 +17,8 @@
 #include <DHT.h>
 
 // ==================== 1. CAU HINH WIFI ====================
-const char* WIFI_SSID     = "Thanh Trung";
-const char* WIFI_PASSWORD = "10131719";
+const char* WIFI_SSID     = "OPPO";
+const char* WIFI_PASSWORD = "tumottoinam";
 
 // ==================== 2. CAU HINH FIREBASE ====================
 const char* FIREBASE_HOST = "https://iot-sytems-default-rtdb.firebaseio.com";
@@ -39,7 +39,7 @@ const char* SENSOR_ID = "ESP32_KHO_LANH";
 #define PIN_LED_RED       32   // LED Do      - Can xu ly
 #define PIN_LED_ONBOARD   2    // LED onboard ESP32 (Bao WiFi)
 #define PIN_BUZZER        16   // Coi buzzer  - Can xu ly
-#define ENABLE_BUZZER     false // Dat false de tat coi (che do ban dem/im lang), den do van sang binh thuong
+#define ENABLE_BUZZER     true // Dat false de tat coi (che do ban dem/im lang), den do van sang binh thuong
 
 // ==================== 4. CAU HINH CAM BIEN ====================
 #define DHTTYPE DHT22
